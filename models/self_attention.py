@@ -21,8 +21,6 @@ class SelfAttentionNet(nn.Module):
         out = out.permute(1, 0, 2) #这里是将对应的维度调整过去，从而方式出现问题
         out, _ = self.attention(out, out, out)
         out = out.permute(1, 0, 2)
-        out = self.relu(out)
-        out = self.fc(out)
         return out.squeeze()
 
 if __name__ == '__main__':
@@ -32,8 +30,8 @@ if __name__ == '__main__':
     hidden_size = 100
     num_heads = 2
     num_layers = 2
-    seq_len = 5
-    batch_size = 2
+    seq_len = 15
+    batch_size = 32
 
     model = SelfAttentionNet(input_size, hidden_size, num_heads, num_layers)
     x = torch.randn(seq_len, batch_size, input_size) # 5 2 10

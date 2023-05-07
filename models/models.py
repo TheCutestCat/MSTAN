@@ -1,8 +1,12 @@
 # all the single models
+import numpy as np
+
 from data.TestDataLoader import TestDataLoader
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from scipy.stats import beta
+
 
 class NonlinearDense(nn.Module):
     def __init__(self, Batch,tau,feature):
@@ -52,41 +56,108 @@ class MultiSourceProcess(nn.Module):
 
         return out #batch tau 2
 
-class LSTMencoder(nn.Module):
-    """
-    INPUT [Batch, T0, 2]
-    OUTPUT [Batch, T0, d_model]
-    使用里面的全连接层拉改变模型的维度
-    """
-    pass
+class Encoder(nn.Module):
+    def __init__(self, input_size, hidden_size, num_layers=1):
+        super(Encoder, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
 
-class LSTMdecoder(nn.Module):
-    """
-    INPUT [Batch, tau, 2]
-    OUTPUT [Batch, tau, d_model]
-    使用里面的全连接层拉改变模型的维度
-    """
-    pass
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+
+    def forward(self, x):
+        output, hidden = self.lstm(x)
+        return output,hidden
+
+class Decoder(nn.Module):
+    def __init__(self, hidden_size, output_size, num_layers=1):
+        super(Decoder, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+
+        self.lstm = nn.LSTM(output_size, hidden_size, num_layers, batch_first=True)
+
+    def forward(self, x, hidden):
+        output, _ = self.lstm(x, hidden)
+        return output
+
+class Seq2Seq(nn.Module):
+    def __init__(self, encoder, decoder):
+        super(Seq2Seq, self).__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+
+    def forward(self, source, target):
+        output1, hidden = self.encoder(source)
+        output2 = self.decoder(target, hidden)
+        return output1,output2
 
 class SelfAttention(nn.Module):
-    """
-    这个是在完成了 position_encoding 之后
-    INPUT [Batch, To+tau,d_model]
-    OUTPUT [Batch, tau, d_attention]
-    只选取self-attention的后面部分
-    使用全连接层改变模型的维度
-    """
-    pass
+    def __init__(self, input_dim, output_dim):
+        super(SelfAttention, self).__init__()
+        self.query = nn.Linear(input_dim, output_dim)
+        self.key = nn.Linear(input_dim, output_dim)
+        self.value = nn.Linear(input_dim, output_dim)
+        self.scale_factor = torch.sqrt(torch.tensor(output_dim, dtype=torch.float32))
+
+    def forward(self, x):
+        # x shape: (batch_size, seq_len, input_dim)
+        batch_size, seq_len, input_dim = x.size()
+
+        Q = self.query(x)  # shape: (batch_size, seq_len, output_dim)
+        K = self.key(x)    # shape: (batch_size, seq_len, output_dim)
+        V = self.value(x)  # shape: (batch_size, seq_len, output_dim)
+
+        attention_logits = torch.matmul(Q, K.transpose(-2, -1)) / self.scale_factor
+        attention_weights = torch.softmax(attention_logits, dim=-1)
+        attention_output = torch.matmul(attention_weights, V)
+
+        return attention_output
+
+class Dense(nn.Module):
+    def __init__(self, input_size, output_size):
+        super().__init__()
+        self.linear = nn.Linear(input_size,output_size)
+        self.relu = nn.ReLU()
+    def forward(self,x):
+        output = self.linear(x)
+        output = self.relu(output)
+        return output
 
 class MixtureDensity(nn.Module):
     """
     INPUT [batch, tau, d_attention]
     OUTPUT [batch, tau, m]
     最后输出的是 dense_1, dense_2 para
-    可以选择单个输出，当然也是可以有更多地多步输出
     """
-    pass
-#这里面的残差模块我们先忽略掉
+    def __init__(self, input_size, output_size):
+        super().__init__()
+        self.alpha = Dense(input_size, output_size)
+        self.beta = Dense(input_size,output_size)
+        self.pi = Dense(input_size,output_size)
+    def forward(self,x):
+        alpha = self.alpha(x)
+        beta = self.beta(x)
+
+        pi = self.pi(x)
+        pi = torch.softmax(pi,dim = 2)
+        return alpha, beta, pi
+
+def Loss(input,m):
+    def GetLoss(alpha,Beta,pi,z):
+        # 还是去使用高斯分布吧
+        # 基本思路已经确定了，回头再更换一个可以批量处理的函数
+        pdf = pi * beta.pdf(z, alpha, Beta)
+        return pdf
+
+    lenth = input.shape[-1]
+    num = int((lenth-1)/m)
+
+    # for i in range(m):
+    i = 1
+    index_a,index_b,index_p =i*num, i*num+1, i*num+2
+    result = GetLoss(input[..., 1],input[..., 1],input[..., 1],input[..., -1])
+    return result
+    #这里面的残差模块我们先忽略掉
 
 if __name__ =='__main__':
     data_path = '../data/test_small_data.csv'
@@ -96,8 +167,46 @@ if __name__ =='__main__':
     batch_size = 32
     M_wind = 3
     M_other = 6
-    Mymodel = MultiSourceProcess(tau, M_wind,M_other)
+
+    sequence_length_in = T0
+    sequence_length_out = tau
+    input_size = 2
+    output_size = 2
+    hidden_size = 64
+
+    input_dim = hidden_size
+    d_attention = 16
+    output_dim = d_attention
+    seq_len = T0 + tau
+
+    m = 3
+
+    MultiProcess = MultiSourceProcess(tau, M_wind,M_other)
+
+    encoder = Encoder(input_size, hidden_size)
+    decoder = Decoder(hidden_size, output_size)
+    seq2seq = Seq2Seq(encoder, decoder)
+    self_attention = SelfAttention(input_dim, output_dim)
+    MixtureDensity = MixtureDensity(d_attention,m)
 
     for batch, (en_x, wind_x, other_x, y) in enumerate(dataloader):
-        Mymodel(wind_x,other_x)
-        #终于通过一个测试了，好感动。。
+
+        Decoder_in = MultiProcess(wind_x,other_x) # [32,5,2]
+        Encoder_in = en_x #[32 10 2]
+
+        output1, output2 = seq2seq(Encoder_in,Decoder_in)
+        attention_in = torch.cat((output1,output2),dim=1) # 32 15 64
+
+        output = self_attention(attention_in)  # shape: (32, 15, 16)
+        output = output[:,-tau:,:] #(32, 5, 16)
+        alpha,beta,pi = MixtureDensity(output) # (32, 5, 3) (32, 5, 3) (32, 5, 3)
+
+        output = torch.cat((alpha,beta,pi),dim=2)
+        y = y[:, -5:, np.newaxis] # just the last 5
+        output = torch.cat((output,y),dim = 2) #(32,5,9) (32,5,)
+
+        loss = Loss(output,m)
+        print(loss.shape)
+        # output[..., 0]
+        # loss =
+        break
