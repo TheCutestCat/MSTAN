@@ -6,7 +6,7 @@ from data.TestDataLoader import TestDataLoader
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+from tests.config import *
 
 class NonlinearDense(nn.Module):
     def __init__(self, Batch,tau,feature):
@@ -157,67 +157,34 @@ class Ensemble(nn.Module):
 
     def __init__(self):
         super().__init__()
-        data_path = '../data/test_small_data.csv'
-        index_wind = ['wind10', 'wind30', 'wind50']
-        index_other = ['angle10', 'angle30', 'angle50', 'temp', 'atmosphere', 'humidity']
-        T0 = 48
-        tau = 48
-        batch_size = 32
-        M_wind = 3
-        M_other = 6
 
-if __name__ =='__main__':
-    data_path = '../data/test_small_data.csv'
-    index_wind = ['wind10', 'wind30', 'wind50']
-    index_other = ['angle10', 'angle30', 'angle50', 'temp', 'atmosphere','humidity']
-    T0 = 48
-    tau = 48
-    batch_size = 32
-    M_wind = 3
-    M_other = 6
+        self.tau = tau #这里有一个需要添加上去的
+        self.dataloader = TestDataLoader(batch_size, data_path, T0, tau, index_wind, index_other)
+        self.MultiProcess = MultiSourceProcess(batch_size, tau, M_wind, M_other)
 
-    sequence_length_in = T0
-    sequence_length_out = tau
-    input_size = 2
-    output_size = 2 #只去输出一个对应的风速大小
-    hidden_size = 64
+        self.encoder = Encoder(input_size, hidden_size)
+        self.decoder = Decoder(hidden_size, output_size)
+        self.seq2seq = Seq2Seq(self.encoder, self.decoder)
+        self.self_attention = SelfAttention(input_dim, output_dim)
+        self.mixtureDensity = MixtureDensity(d_attention, m)
 
-    input_dim = hidden_size
-    d_attention = 16
-    output_dim = d_attention
-    seq_len = T0 + tau
+    def Train(self):
+        for batch, (en_x, wind_x, other_x, y) in enumerate(self.dataloader):
+            Decoder_in = self.MultiProcess(wind_x, other_x)  # [batch,tau,2]
+            Encoder_in = en_x  # [batch T0 2]
 
-    m = 3
+            output1, output2 = self.seq2seq(Encoder_in, Decoder_in)
+            attention_in = torch.cat((output1, output2), dim=1)  # batch T0 + tau 64
 
-    dataloader = TestDataLoader(batch_size, data_path,T0,tau,index_wind,index_other)
-    MultiProcess = MultiSourceProcess(batch_size,tau, M_wind,M_other)
+            output = self.self_attention(attention_in)  # shape: (batch, T0 + tau, 16)
+            output = output[:, -self.tau:, :]  # (batch, tau, 16)
+            alpha, beta, pi = self.mixtureDensity(output)  # (batch, tau, 3) (batch, tau, 3) (batch, tau, 3)  the parameter for almost all of them
 
-    encoder = Encoder(input_size, hidden_size)
-    decoder = Decoder(hidden_size, output_size)
-    seq2seq = Seq2Seq(encoder, decoder)
-    self_attention = SelfAttention(input_dim, output_dim)
-    MixtureDensity = MixtureDensity(d_attention,m)
+            y = y[:, -self.tau:]  # (batch, tau,)#只是一个二维的，后面对其进行了扩充
+            # 需要对y进行归一化，一般而言还是使用max-min的方法最好，但是不太能确定结果，所以直接就是一个sigmoid
+            y = torch.sigmoid(y) * 0.9  # 乘上一个系数，从而防止出现INF的结果，导致无法进行计算
+            loss = Loss(alpha, beta, pi, y)
 
-    for batch, (en_x, wind_x, other_x, y) in enumerate(dataloader):
-
-        Decoder_in = MultiProcess(wind_x,other_x) # [batch,tau,2]
-        Encoder_in = en_x #[batch T0 2]
-
-        output1, output2 = seq2seq(Encoder_in,Decoder_in)
-        attention_in = torch.cat((output1,output2),dim=1) # batch T0 + tau 64
-
-        output = self_attention(attention_in)  # shape: (batch, T0 + tau, 16)
-        output = output[:,-tau:,:] #(batch, tau, 16)
-        alpha,beta,pi = MixtureDensity(output) # (batch, tau, 3) (batch, tau, 3) (batch, tau, 3)  the parameter for almost all of them
-
-        y = y[:,-tau:] #(batch, tau,)#只是一个二维的，后面对其进行了扩充
-        # 需要对y进行归一化，一般而言还是使用max-min的方法最好，但是不太能确定结果，所以直接就是一个sigmoid
-        y = torch.sigmoid(y)*0.9 #乘上一个系数，从而防止出现INF的结果，导致无法进行计算
-        loss = Loss(alpha,beta,pi,y)
-
-
-
-        # print(f'loss is : {loss}')
-    print('DONE!')
-
-        # break
+if __name__ == '__main__':
+    myEnsemble = Ensemble()
+    myEnsemble.Train()
