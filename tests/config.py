@@ -18,5 +18,6 @@ input_dim = hidden_size
 d_attention = 16
 output_dim = d_attention
 seq_len = T0 + tau
-
 m = 3
+
+learning_rate = 0.0001

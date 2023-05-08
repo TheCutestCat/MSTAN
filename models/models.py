@@ -1,5 +1,9 @@
 # all the single models
+import os
+
 import numpy as np
+from matplotlib import pyplot as plt
+from torch import optim
 from torch.distributions import Beta
 
 from data.TestDataLoader import TestDataLoader
@@ -135,8 +139,9 @@ class MixtureDensity(nn.Module):
         self.beta = Dense(input_size,output_size)
         self.pi = Dense(input_size,output_size)
     def forward(self,x):
-        alpha = self.alpha(x)
-        beta = self.beta(x)
+        # todo 防止再出现nan
+        alpha = self.alpha(x) + 1
+        beta = self.beta(x) + 1
 
         pi = self.pi(x)
         pi = torch.softmax(pi,dim = 2)
@@ -153,6 +158,11 @@ def Loss(alpha, beta, pi, y):
 
     return loss
 
+def GetY_pre(alpha, beta, pi):
+    # alpha * pi / (alpha + beta)
+    y_pre = torch.div(torch.mul(alpha,pi), torch.add(alpha,beta)) #都是一对一的运算，(batch,tau,m)
+    y_pre = y_pre.sum(dim = 2)
+    return y_pre
 class Ensemble(nn.Module):
 
     def __init__(self):
@@ -168,23 +178,108 @@ class Ensemble(nn.Module):
         self.self_attention = SelfAttention(input_dim, output_dim)
         self.mixtureDensity = MixtureDensity(d_attention, m)
 
-    def Train(self):
-        for batch, (en_x, wind_x, other_x, y) in enumerate(self.dataloader):
-            Decoder_in = self.MultiProcess(wind_x, other_x)  # [batch,tau,2]
-            Encoder_in = en_x  # [batch T0 2]
 
-            output1, output2 = self.seq2seq(Encoder_in, Decoder_in)
-            attention_in = torch.cat((output1, output2), dim=1)  # batch T0 + tau 64
+    def forward(self,en_x, wind_x, other_x, y):
+        Decoder_in = self.MultiProcess(wind_x, other_x)  # [batch,tau,2]
+        Encoder_in = en_x  # [batch T0 2]
 
-            output = self.self_attention(attention_in)  # shape: (batch, T0 + tau, 16)
-            output = output[:, -self.tau:, :]  # (batch, tau, 16)
-            alpha, beta, pi = self.mixtureDensity(output)  # (batch, tau, 3) (batch, tau, 3) (batch, tau, 3)  the parameter for almost all of them
+        output1, output2 = self.seq2seq(Encoder_in, Decoder_in)
+        attention_in = torch.cat((output1, output2), dim=1)  # batch T0 + tau 64
 
-            y = y[:, -self.tau:]  # (batch, tau,)#只是一个二维的，后面对其进行了扩充
-            # 需要对y进行归一化，一般而言还是使用max-min的方法最好，但是不太能确定结果，所以直接就是一个sigmoid
-            y = torch.sigmoid(y) * 0.9  # 乘上一个系数，从而防止出现INF的结果，导致无法进行计算
-            loss = Loss(alpha, beta, pi, y)
+        output = self.self_attention(attention_in)  # shape: (batch, T0 + tau, 16)
+        output = output[:, -self.tau:, :]  # (batch, tau, 16)
+        alpha, beta, pi = self.mixtureDensity(output)  # (batch, tau, 3) (batch, tau, 3) (batch, tau, 3)  the parameter for almost all of them
+        y = y[:, -self.tau:]  # (batch, tau,)#只是一个二维的，后面对其进行了扩充
+        # 需要对y进行归一化，一般而言还是使用max-min的方法最好，但是不太能确定结果，所以直接就是一个sigmoid
+        # y的变化可以夺多来测试一下，也许结果会比较不一样的
+        y = (y+ 10)/100  # 乘上一个系数，从而防止出现INF的结果，导致无法进行计算
+        return alpha, beta, pi, y
+
+class trainer():
+    def __init__(self):
+        if torch.cuda.is_available():
+            self.device = torch.device("cuda")
+        else:
+            self.device = torch.device("cpu")
+        self.myEnsemble = Ensemble().to(self.device)
+        self.optimizer = optim.Adam(self.myEnsemble.parameters(), lr=learning_rate)
+        self.dataloader = TestDataLoader(batch_size, data_path, T0, tau, index_wind, index_other)
+        self.test_dataloader = None # TODO
+    def train(self,epoch = 1):
+        self.myEnsemble.train()
+        for i in range(epoch):
+            loss_train = []
+            for batch, (en_x, wind_x, other_x, y) in enumerate(self.dataloader):
+                # to device
+                en_x, wind_x, other_x, y = en_x.to(self.device), wind_x.to(self.device), other_x.to(self.device), y.to(self.device)
+                alpha, beta, pi, y = self.myEnsemble(en_x, wind_x, other_x, y)
+                loss = Loss(alpha, beta, pi, y)
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step()
+                # print(f'loss {loss}')
+
+                loss_train.append(loss)
+            loss_train = sum(loss_train)/len(loss_train)
+            print(f'epoch {i+1}  {loss_train}')
+
+    def test(self):
+        self.myEnsemble.eval()
+        with torch.no_grad():
+            loss_test = []
+            for batch, (en_x, wind_x, other_x, y) in enumerate(self.dataloader):
+                en_x, wind_x, other_x, y = en_x.to(self.device), wind_x.to(self.device), other_x.to(self.device), y.to(self.device)
+                alpha, beta, pi, y = self.myEnsemble(en_x, wind_x, other_x, y)
+                #TODO use another test mode to analyse the y
+                y_pre = GetY_pre(alpha, beta, pi) # TODO
+
+                loss = torch.abs(y - y_pre).mean().item() #全部的平均数
+                # print(f'batch {batch} loss {loss},has_nan_pre {has_nan_pre},has_nan_y {has_nan_y}')
+                loss_test.append(loss)
+            loss_test = sum(loss_test)/len(loss_test)
+            print(f'loss is {loss_test}')
+            return Loss
+
+    def show(self):
+        self.myEnsemble.eval()
+        with torch.no_grad():
+            for batch, (en_x, wind_x, other_x, y) in enumerate(self.dataloader):
+                en_x, wind_x, other_x, y = en_x.to(self.device), wind_x.to(self.device), other_x.to(self.device), y.to(self.device)
+                alpha, beta, pi, y = self.myEnsemble(en_x, wind_x, other_x, y)
+
+                y_pre = GetY_pre(alpha, beta, pi)  # TODO
+                show_y = y[0,:]
+                show_y_pre = y_pre[0,:]
+
+                plt.figure(figsize=(13, 6))
+                plt.plot(show_y, linestyle='--', label='pre')
+                plt.plot(show_y_pre, linestyle='-', label='real')
+                plt.legend()
+                plt.savefig('new.png')
+                plt.title(title = '48 data')
+                plt.show()
+                break #我们只去看第一个（再去处理更多的内容有点太复杂了）
+
+    def save(self,name = 'model'):
+        path ='..\save'
+        name = name + '.pt'
+        path = os.path.join(path,name)
+        torch.save(self.myEnsemble.state_dict(), path)
+        print(f'model saved at {path}')
+
+    def load(self,name = 'model'):
+        path = '..\save'
+        name = name+'.pt'
+        path = os.path.join(path,name)
+        self.myEnsemble.load_state_dict(torch.load(path))
+        print(f'model loaded from {path}')
+
 
 if __name__ == '__main__':
-    myEnsemble = Ensemble()
-    myEnsemble.Train()
+    mytrainer = trainer()
+    # for i in range(10):
+    mytrainer.train(epoch = 1)
+    mytrainer.save()
+    newtrainer = trainer()
+    newtrainer.load()
+    # mytrainer.test() # 从48小时的预测结果来找到
