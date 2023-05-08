@@ -204,6 +204,9 @@ class trainer():
         self.optimizer = optim.Adam(self.myEnsemble.parameters(), lr=learning_rate)
         self.dataloader = TestDataLoader(batch_size, data_path, T0, tau, index_wind, index_other)
         self.test_dataloader = None # TODO
+
+        self.show_y = []
+        self.show_y_pre = []
     def train(self,epoch = 1):
         self.myEnsemble.train()
         for i in range(epoch):
@@ -239,32 +242,34 @@ class trainer():
             print(f'loss is {loss_test}')
             return Loss
 
-    def show(self):
+    def get_show_data(self,index):
         self.myEnsemble.eval()
         with torch.no_grad():
             self.dataloader = TestDataLoader(batch_size,data_path,T0,tau,index_wind,index_other,shuffle=False)
             for batch, (en_x, wind_x, other_x, y) in enumerate(self.dataloader):
-                # if(batch % batch_size ==1):
-                # en_x, wind_x, other_x, y = en_x.to(self.device), wind_x.to(self.device), other_x.to(self.device), y.to(self.device)
-                # alpha, beta, pi, y = self.myEnsemble(en_x, wind_x, other_x, y)
-                #
-                # y_pre = GetY_pre(alpha, beta, pi)  # TODO
-                # show_y = y[0,:]
-                # show_y_pre = y_pre[0,:]
-                #
-                # show_y = show_y.cpu().detach().numpy()
-                # show_y_pre = show_y_pre.cpu().detach().numpy()
-                #
-                # plt.figure(figsize=(13, 6))
-                # plt.plot(show_y, linestyle='--', label='real')
-                # plt.plot(show_y_pre, linestyle='-', label='pre')
-                # plt.legend()
-                # plt.savefig('new.png')
-                # plt.show()
-                # # if batch > 64*10:
-                #     break #我们只去看第一个（再去处理更多的内容有点太复杂了）
-                print(batch)
+                if batch == index :
+                    en_x, wind_x, other_x, y = en_x.to(self.device), wind_x.to(self.device), other_x.to(self.device), y.to(self.device)
+                    alpha, beta, pi, y = self.myEnsemble(en_x, wind_x, other_x, y)
 
+                    y_pre = GetY_pre(alpha, beta, pi) 
+                    show_y = y #[0,:]
+                    show_y_pre = y_pre #[0,:]
+                    show_y = show_y.cpu().detach().numpy()
+                    show_y_pre = show_y_pre.cpu().detach().numpy()
+
+                    self.show_y = show_y
+                    self.show_y_pre = show_y_pre
+                    break
+    def show(self,index):
+        show_y = self.show_y[index,:]
+        show_y_pre = self.show_y_pre[index, :]
+
+        plt.figure(figsize=(13, 6))
+        plt.plot(show_y, linestyle='--', label='real')
+        plt.plot(show_y_pre, linestyle='-', label='pre')
+        plt.legend()
+        plt.savefig('new.png')
+        plt.show()
     def save(self,name = 'model'):
         path ='..\save'
         name = name + '.pt'
@@ -282,7 +287,5 @@ class trainer():
 
 if __name__ == '__main__':
     mytrainer = trainer()
-    # mytrainer.train(epoch = 1)
-    # mytrainer.save() # 从48小时的预测结果来找到
-    # mytrainer.test()
-    mytrainer.show()
+    mytrainer.get_show_data()
+    mytrainer.show(1)
