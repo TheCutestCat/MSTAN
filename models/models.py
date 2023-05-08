@@ -25,7 +25,7 @@ class MultiSourceProcess(nn.Module):
     原来是一个就能输出这么多的结果呀。。最终的计算结果还是非常快的，
     我们只去做一个d_model 相当于只输出一个d_model还有一个别的结构
     """
-    def __init__(self, tau, M_wind,M_other):
+    def __init__(self,batch_size , tau, M_wind,M_other):
         super(MultiSourceProcess, self).__init__()
         self.batch = batch_size
         self.tau = tau
@@ -142,7 +142,6 @@ class MixtureDensity(nn.Module):
         pi = torch.softmax(pi,dim = 2)
         return alpha, beta, pi
 
-
 def Loss(alpha, beta, pi, y):
     beta_dist = Beta(alpha+ 0.1, beta+ 0.1)# 添加一个小数，防止生成函数的时候因为0的存在导致出现了问题
 
@@ -154,11 +153,25 @@ def Loss(alpha, beta, pi, y):
 
     return loss
 
+class Ensemble(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+        data_path = '../data/test_small_data.csv'
+        index_wind = ['wind10', 'wind30', 'wind50']
+        index_other = ['angle10', 'angle30', 'angle50', 'temp', 'atmosphere', 'humidity']
+        T0 = 48
+        tau = 48
+        batch_size = 32
+        M_wind = 3
+        M_other = 6
+
 if __name__ =='__main__':
     data_path = '../data/test_small_data.csv'
-    dataloader = TestDataLoader(data_path, 'MultiSourceProcess')
-    T0 = 10
-    tau = 5
+    index_wind = ['wind10', 'wind30', 'wind50']
+    index_other = ['angle10', 'angle30', 'angle50', 'temp', 'atmosphere','humidity']
+    T0 = 48
+    tau = 48
     batch_size = 32
     M_wind = 3
     M_other = 6
@@ -166,7 +179,7 @@ if __name__ =='__main__':
     sequence_length_in = T0
     sequence_length_out = tau
     input_size = 2
-    output_size = 2
+    output_size = 2 #只去输出一个对应的风速大小
     hidden_size = 64
 
     input_dim = hidden_size
@@ -176,7 +189,8 @@ if __name__ =='__main__':
 
     m = 3
 
-    MultiProcess = MultiSourceProcess(tau, M_wind,M_other)
+    dataloader = TestDataLoader(batch_size, data_path,T0,tau,index_wind,index_other)
+    MultiProcess = MultiSourceProcess(batch_size,tau, M_wind,M_other)
 
     encoder = Encoder(input_size, hidden_size)
     decoder = Decoder(hidden_size, output_size)
@@ -186,20 +200,22 @@ if __name__ =='__main__':
 
     for batch, (en_x, wind_x, other_x, y) in enumerate(dataloader):
 
-        Decoder_in = MultiProcess(wind_x,other_x) # [32,5,2]
-        Encoder_in = en_x #[32 10 2]
+        Decoder_in = MultiProcess(wind_x,other_x) # [batch,tau,2]
+        Encoder_in = en_x #[batch T0 2]
 
         output1, output2 = seq2seq(Encoder_in,Decoder_in)
-        attention_in = torch.cat((output1,output2),dim=1) # 32 15 64
+        attention_in = torch.cat((output1,output2),dim=1) # batch T0 + tau 64
 
-        output = self_attention(attention_in)  # shape: (32, 15, 16)
-        output = output[:,-tau:,:] #(32, 5, 16)
-        alpha,beta,pi = MixtureDensity(output) # (32, 5, 3) (32, 5, 3) (32, 5, 3)  the parameter for almost all of them
+        output = self_attention(attention_in)  # shape: (batch, T0 + tau, 16)
+        output = output[:,-tau:,:] #(batch, tau, 16)
+        alpha,beta,pi = MixtureDensity(output) # (batch, tau, 3) (batch, tau, 3) (batch, tau, 3)  the parameter for almost all of them
 
-        y = y[:,-tau:]
+        y = y[:,-tau:] #(batch, tau,)#只是一个二维的，后面对其进行了扩充
         # 需要对y进行归一化，一般而言还是使用max-min的方法最好，但是不太能确定结果，所以直接就是一个sigmoid
         y = torch.sigmoid(y)*0.9 #乘上一个系数，从而防止出现INF的结果，导致无法进行计算
         loss = Loss(alpha,beta,pi,y)
+
+
 
         # print(f'loss is : {loss}')
     print('DONE!')
