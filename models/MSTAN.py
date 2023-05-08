@@ -1,22 +1,26 @@
-import numpy as np
 import torch
-from scipy.stats import beta
+import torch.nn.functional as F
+from torch.distributions.beta import Beta
 
-# 定义一个复杂的运算
-def func(last_two_cols):
-    a, b = last_two_cols[..., 0], last_two_cols[..., 1]
-    result = pdf = beta.pdf(0.5, a, b)
+# 假设你有以下输入，这里我使用随机值来代替
+alpha = torch.rand(32, 5, 3)
+beta = torch.rand(32, 5, 3)
+pi = torch.rand(32, 5, 3)
 
-    return result
+# Softmax 应用在第三个维度
+pi = F.softmax(pi, dim=2)
 
-# 生成一个维度为（32，5，3）的矩阵
-matrix = np.random.rand(32, 5, 3)
-matrix = torch.tensor(matrix)
-# 提取最后两个维度
-last_two_dims = matrix[:, :, 1:]
+# 假设你有一个 ground truth 概率值向量 y，维度为 (32, 5)
+y = torch.rand(32, 5)
+def Loss(alpha,beta,pi,y):
+    beta_dist = Beta(alpha, beta)
 
-# 对最后两个维度进行运算
-result = func(last_two_dims)
+    pdf_values = beta_dist.log_prob(y.unsqueeze(-1)).exp() # (32, 5, 3)
 
-# 输出结果
-print(result.shape)  # (32, 5)
+    weighted_pdf_values = (pi * pdf_values).sum(dim=2) #(32, 5)
+
+    loss = -weighted_pdf_values.log().mean()
+
+    return loss
+
+loss = Loss(alpha,beta,pi,y)

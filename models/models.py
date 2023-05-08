@@ -1,11 +1,11 @@
 # all the single models
 import numpy as np
+from torch.distributions import Beta
 
 from data.TestDataLoader import TestDataLoader
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from scipy.stats import beta
 
 
 class NonlinearDense(nn.Module):
@@ -142,22 +142,17 @@ class MixtureDensity(nn.Module):
         pi = torch.softmax(pi,dim = 2)
         return alpha, beta, pi
 
-def Loss(input,m):
-    def GetLoss(alpha,Beta,pi,z):
-        # 还是去使用高斯分布吧
-        # 基本思路已经确定了，回头再更换一个可以批量处理的函数
-        pdf = pi * beta.pdf(z, alpha, Beta)
-        return pdf
 
-    lenth = input.shape[-1]
-    num = int((lenth-1)/m)
+def Loss(alpha, beta, pi, y):
+    beta_dist = Beta(alpha+ 0.1, beta+ 0.1)# 添加一个小数，防止生成函数的时候因为0的存在导致出现了问题
 
-    # for i in range(m):
-    i = 1
-    index_a,index_b,index_p =i*num, i*num+1, i*num+2
-    result = GetLoss(input[..., 1],input[..., 1],input[..., 1],input[..., -1])
-    return result
-    #这里面的残差模块我们先忽略掉
+    PdfValues = beta_dist.log_prob(y.unsqueeze(-1)).exp()  # (32, 5, 3)
+
+    weighted_pdf_values = (pi * PdfValues).sum(dim=2)  # (32, 5)
+
+    loss = -weighted_pdf_values.log().mean()
+
+    return loss
 
 if __name__ =='__main__':
     data_path = '../data/test_small_data.csv'
@@ -199,14 +194,12 @@ if __name__ =='__main__':
 
         output = self_attention(attention_in)  # shape: (32, 15, 16)
         output = output[:,-tau:,:] #(32, 5, 16)
-        alpha,beta,pi = MixtureDensity(output) # (32, 5, 3) (32, 5, 3) (32, 5, 3)
+        alpha,beta,pi = MixtureDensity(output) # (32, 5, 3) (32, 5, 3) (32, 5, 3)  the parameter for almost all of them
 
-        output = torch.cat((alpha,beta,pi),dim=2)
-        y = y[:, -5:, np.newaxis] # just the last 5
-        output = torch.cat((output,y),dim = 2) #(32,5,9) (32,5,)
+        y = y[:,-tau:]
+        # 需要对y进行归一化，一般而言还是使用max-min的方法最好，但是不太能确定结果，所以直接就是一个sigmoid
+        y = torch.sigmoid(y)*0.9 #乘上一个系数，从而防止出现INF的结果，导致无法进行计算
+        loss = Loss(alpha,beta,pi,y)
 
-        loss = Loss(output,m)
-        print(loss.shape)
-        # output[..., 0]
-        # loss =
+
         break
