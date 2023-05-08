@@ -251,7 +251,7 @@ class trainer():
                     en_x, wind_x, other_x, y = en_x.to(self.device), wind_x.to(self.device), other_x.to(self.device), y.to(self.device)
                     alpha, beta, pi, y = self.myEnsemble(en_x, wind_x, other_x, y)
 
-                    y_pre = GetY_pre(alpha, beta, pi) 
+                    y_pre = GetY_pre(alpha, beta, pi)
                     show_y = y #[0,:]
                     show_y_pre = y_pre #[0,:]
                     show_y = show_y.cpu().detach().numpy()
