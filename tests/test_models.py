@@ -22,7 +22,7 @@ class MultiSourceProcess(unittest.TestCase):
             self.assertTrue(np.array_equal(np.array(wind_x.shape),np.array([self.batch_size,self.tau,3])))
             self.assertTrue(np.array_equal(np.array(other_x.shape),np.array([self.batch_size,self.tau,6])))
             self.assertTrue(np.array_equal(np.array(y.shape),np.array([self.batch_size,self.T0+self.tau])))
-            break
+            # break
 
 if __name__ == '__main__':
     unittest.main()

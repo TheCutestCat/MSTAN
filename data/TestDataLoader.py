@@ -11,17 +11,10 @@ index_wind = ['wind10', 'wind30', 'wind50']
 index_other = ['angle10', 'angle30', 'angle50', 'temp', 'atmosphere',
                'humidity']
 
-def check(data_path,ModuleName):
+def check(data_path):
     if not os.path.isfile(data_path):
         raise FileNotFoundError(f"File not found: {data_path}")
-
-    ModuleNameList = ['MultiSourceProcess',
-                      'LSTMencoder',
-                      'LSTMdecoder',
-                      'SelfAttention',
-                      'MixtureDensity']
-    if ModuleName not in ModuleNameList:
-        raise ValueError("Invalid ModuleName")
+    return 0
 
 class MultiSourceProcessDataset(Dataset):
     def __init__(self, data):
@@ -38,7 +31,7 @@ class MultiSourceProcessDataset(Dataset):
 
 def TestDataLoader(data_path,ModuleName):
     # load the little data
-    check(data_path,ModuleName)
+    check(data_path)
 
 
     if ModuleName == 'MultiSourceProcess':
@@ -48,17 +41,9 @@ def TestDataLoader(data_path,ModuleName):
         df = pd.read_csv(data_path)
 
         MyDataset = MultiSourceProcessDataset(df)
-        loader = DataLoader(MyDataset, batch_size=batch_size, shuffle=True)
+        loader = DataLoader(MyDataset, batch_size=batch_size, shuffle=True,drop_last = True)
         return loader
 
-    elif ModuleName == 'LSTMencoder':
-        pass
-    elif ModuleName == 'LSTMdecoder':
-        pass
-    elif ModuleName == 'SelfAttention':
-        pass
-    elif ModuleName == 'MixtureDensity':
-        pass
 
 if __name__ == '__main__':
     data_path = 'test_small_data.csv'
@@ -69,3 +54,4 @@ if __name__ == '__main__':
         print(f"other_x_batch.shape: {other_x_batch.shape}")
         print(f"y_batch.shape: {y_batch.shape}")
         break
+    print("DONE")

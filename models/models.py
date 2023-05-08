@@ -201,5 +201,7 @@ if __name__ =='__main__':
         y = torch.sigmoid(y)*0.9 #乘上一个系数，从而防止出现INF的结果，导致无法进行计算
         loss = Loss(alpha,beta,pi,y)
 
+        # print(f'loss is : {loss}')
+    print('DONE!')
 
-        break
+        # break
