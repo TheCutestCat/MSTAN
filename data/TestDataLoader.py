@@ -24,9 +24,10 @@ class MultiSourceProcessDataset(Dataset):
         en_x = self.data.loc[index:index+self.T0-1, ['wind10','angle10']]
         wind_x, other_x = self.data.loc[index+self.T0:index+self.T0+self.tau-1, self.index_wind],self.data.loc[index+self.T0:index+self.T0+self.tau-1, self.index_other]
         y = self.data.loc[index:index+self.T0+self.tau-1, 'power']
+        y = (y + 10) / 100 #进行一个大致的处理
         return torch.tensor(en_x.values).to(torch.float32),torch.tensor(wind_x.values).to(torch.float32),torch.tensor(other_x.values).to(torch.float32), torch.tensor(y.values).to(torch.float32)
 
-def TestDataLoader(batch_size,data_path,T0,tau,index_wind,index_other):
+def TestDataLoader(batch_size,data_path,T0,tau,index_wind,index_other,shuffle=True):
     # load the little data
     check(data_path)
 
@@ -36,6 +37,7 @@ def TestDataLoader(batch_size,data_path,T0,tau,index_wind,index_other):
     df = pd.read_csv(data_path)
 
     MyDataset = MultiSourceProcessDataset(df,T0,tau,index_wind,index_other)
-    loader = DataLoader(MyDataset, batch_size=batch_size, shuffle=True,drop_last = True)
+    loader = DataLoader(MyDataset, batch_size=batch_size, shuffle=shuffle,drop_last = True)
     return loader
+
 

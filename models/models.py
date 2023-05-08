@@ -148,7 +148,7 @@ class MixtureDensity(nn.Module):
         return alpha, beta, pi
 
 def Loss(alpha, beta, pi, y):
-    beta_dist = Beta(alpha+ 0.1, beta+ 0.1)# 添加一个小数，防止生成函数的时候因为0的存在导致出现了问题
+    beta_dist = Beta(alpha, beta)# 添加一个小数，防止生成函数的时候因为0的存在导致出现了问题
 
     PdfValues = beta_dist.log_prob(y.unsqueeze(-1)).exp()  # (32, 5, 3)
 
@@ -163,6 +163,7 @@ def GetY_pre(alpha, beta, pi):
     y_pre = torch.div(torch.mul(alpha,pi), torch.add(alpha,beta)) #都是一对一的运算，(batch,tau,m)
     y_pre = y_pre.sum(dim = 2)
     return y_pre
+
 class Ensemble(nn.Module):
 
     def __init__(self):
@@ -189,11 +190,9 @@ class Ensemble(nn.Module):
         output = self.self_attention(attention_in)  # shape: (batch, T0 + tau, 16)
         output = output[:, -self.tau:, :]  # (batch, tau, 16)
         alpha, beta, pi = self.mixtureDensity(output)  # (batch, tau, 3) (batch, tau, 3) (batch, tau, 3)  the parameter for almost all of them
-        y = y[:, -self.tau:]  # (batch, tau,)#只是一个二维的，后面对其进行了扩充
-        # 需要对y进行归一化，一般而言还是使用max-min的方法最好，但是不太能确定结果，所以直接就是一个sigmoid
-        # y的变化可以夺多来测试一下，也许结果会比较不一样的
-        y = (y+ 10)/100  # 乘上一个系数，从而防止出现INF的结果，导致无法进行计算
-        return alpha, beta, pi, y
+        Y = y[:, -self.tau:]  # (batch, tau,)#只是一个二维的，后面对其进行了扩充
+
+        return alpha, beta, pi, Y
 
 class trainer():
     def __init__(self):
@@ -243,22 +242,28 @@ class trainer():
     def show(self):
         self.myEnsemble.eval()
         with torch.no_grad():
+            self.dataloader = TestDataLoader(batch_size,data_path,T0,tau,index_wind,index_other,shuffle=False)
             for batch, (en_x, wind_x, other_x, y) in enumerate(self.dataloader):
-                en_x, wind_x, other_x, y = en_x.to(self.device), wind_x.to(self.device), other_x.to(self.device), y.to(self.device)
-                alpha, beta, pi, y = self.myEnsemble(en_x, wind_x, other_x, y)
-
-                y_pre = GetY_pre(alpha, beta, pi)  # TODO
-                show_y = y[0,:]
-                show_y_pre = y_pre[0,:]
-
-                plt.figure(figsize=(13, 6))
-                plt.plot(show_y, linestyle='--', label='pre')
-                plt.plot(show_y_pre, linestyle='-', label='real')
-                plt.legend()
-                plt.savefig('new.png')
-                plt.title(title = '48 data')
-                plt.show()
-                break #我们只去看第一个（再去处理更多的内容有点太复杂了）
+                # if(batch % batch_size ==1):
+                # en_x, wind_x, other_x, y = en_x.to(self.device), wind_x.to(self.device), other_x.to(self.device), y.to(self.device)
+                # alpha, beta, pi, y = self.myEnsemble(en_x, wind_x, other_x, y)
+                #
+                # y_pre = GetY_pre(alpha, beta, pi)  # TODO
+                # show_y = y[0,:]
+                # show_y_pre = y_pre[0,:]
+                #
+                # show_y = show_y.cpu().detach().numpy()
+                # show_y_pre = show_y_pre.cpu().detach().numpy()
+                #
+                # plt.figure(figsize=(13, 6))
+                # plt.plot(show_y, linestyle='--', label='real')
+                # plt.plot(show_y_pre, linestyle='-', label='pre')
+                # plt.legend()
+                # plt.savefig('new.png')
+                # plt.show()
+                # # if batch > 64*10:
+                #     break #我们只去看第一个（再去处理更多的内容有点太复杂了）
+                print(batch)
 
     def save(self,name = 'model'):
         path ='..\save'
@@ -277,9 +282,7 @@ class trainer():
 
 if __name__ == '__main__':
     mytrainer = trainer()
-    # for i in range(10):
-    mytrainer.train(epoch = 1)
-    mytrainer.save()
-    newtrainer = trainer()
-    newtrainer.load()
-    # mytrainer.test() # 从48小时的预测结果来找到
+    # mytrainer.train(epoch = 1)
+    # mytrainer.save() # 从48小时的预测结果来找到
+    # mytrainer.test()
+    mytrainer.show()
