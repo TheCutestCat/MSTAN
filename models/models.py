@@ -291,6 +291,7 @@ class trainer():
 
 if __name__ == '__main__':
     mytrainer = trainer()
-    mytrainer.train(epoch= 20)
+    mytrainer.train(epoch= 30)
+    mytrainer.save(name = 'epoch_20_save')
     # mytrainer.get_show_data()
     # mytrainer.show(1)
