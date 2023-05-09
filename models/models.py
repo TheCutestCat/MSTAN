@@ -3,8 +3,11 @@ import os
 
 import numpy as np
 from matplotlib import pyplot as plt
-from torch import optim
+from torch import optim, random
 from torch.distributions import Beta
+import random
+
+from torch.nn import init
 
 from data.TestDataLoader import loader
 import torch
@@ -15,11 +18,13 @@ from tests.config import *
 class NonlinearDense(nn.Module):
     def __init__(self, Batch,tau,feature):
         super().__init__()
-        self.weight = nn.Parameter(torch.randn(tau,feature))
-        self.bias = nn.Parameter(torch.randn(tau,feature))
+        self.weight = nn.Parameter(torch.randn(tau, feature))
+        init.normal_(self.weight)
+        self.bias = nn.Parameter(torch.zeros(tau, feature))
         self.Batch = Batch
         self.tau = tau
         self.feature = feature
+
         #需要是同样的参数的
     def forward(self, x):
         weight = self.weight.expand(self.Batch, self.tau, self.feature)
@@ -48,6 +53,11 @@ class MultiSourceProcess(nn.Module):
         self.Dense_wind = NonlinearDense(self.batch,self.tau,self.M_wind)
         self.Dense_other = NonlinearDense(self.batch,self.tau,self.M_other)
 
+        init.normal_(self.linear_wind.weight)
+        init.zeros_(self.linear_wind.bias)
+        init.normal_(self.linear_other.weight)
+        init.zeros_(self.linear_other.bias)
+
         # 这个结果应该没问题的，还是需要继续去测试一下
     def forward(self, wind_x,other_x):
         X = torch.cat([wind_x,other_x],dim = 2)
@@ -69,7 +79,6 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
-
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
 
     def forward(self, x):
@@ -81,7 +90,6 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
-
         self.lstm = nn.LSTM(output_size, hidden_size, num_layers, batch_first=True)
 
     def forward(self, x, hidden):
@@ -126,6 +134,7 @@ class Dense(nn.Module):
         super().__init__()
         self.linear = nn.Linear(input_size,output_size)
         self.relu = nn.ReLU()
+
     def forward(self,x):
         output = self.linear(x)
         output = self.relu(output)
@@ -166,7 +175,15 @@ def GetY_pre(alpha, beta, pi):
     # alpha * pi / (alpha + beta)
     y_pre = torch.div(torch.mul(alpha,pi), torch.add(alpha,beta)) #都是一对一的运算，(batch,tau,m)
     y_pre = y_pre.sum(dim = 2)
+
     return y_pre
+
+def set_seed(seed = 100):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
 
 class EarlyStopping:
     def __init__(self, patience=4, delta=0):
@@ -194,8 +211,8 @@ class Ensemble_proba(nn.Module):
         super().__init__()
 
         self.tau = tau
+        #对模型进行init的初始化构造
         self.MultiProcess = MultiSourceProcess(batch_size, tau, M_wind, M_other)
-
         self.encoder = Encoder(input_size, hidden_size)
         self.decoder = Decoder(hidden_size, output_size)
         self.seq2seq = Seq2Seq(self.encoder, self.decoder)
@@ -219,6 +236,7 @@ class Ensemble_proba(nn.Module):
 
 class trainer():
     def __init__(self,learning_rate = 0.001):
+        set_seed(seed = 42)
         if torch.cuda.is_available():
             self.device = torch.device("cuda")
         else:
@@ -257,7 +275,8 @@ class trainer():
             if self.early_stopping.stop_training:
                 print("Early Stopping!")
                 break
-            print(f'epoch {i+1}  loss_train : {loss_train}, loss_test : {loss_test}')
+            print(f'epoch {i+1:>3}  loss_train : {loss_train:.3f}, loss_test : {loss_test:.4f}, learning_rate :{self.lr_scheduler.get_last_lr()[0]:.6f}')
+
 
     def test(self):
         self.myEnsemble.eval()

@@ -1,10 +1,13 @@
 import torch
+import numpy as np
+import random
 
-# 创建一个维度为（32，5）的tensor
-x = torch.randn((32, 5))
+def set_seed(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
 
-# 计算绝对值的平均数
-abs_mean = torch.abs(x).mean()
-
-# 打印结果
-print("The mean of absolute values is:", abs_mean.item())
+seed = 42
+set_seed(seed)

@@ -18,6 +18,6 @@ input_dim = hidden_size
 d_attention = 16
 output_dim = d_attention
 seq_len = T0 + tau
-m = 3
+m = 1
 
 # learning_rate = 0.001 #直接在模型那边去进行定义
