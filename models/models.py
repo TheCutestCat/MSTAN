@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 from torch import optim
 from torch.distributions import Beta
 
-from data.TestDataLoader import TestDataLoader
+from data.TestDataLoader import loader
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -168,13 +168,31 @@ def GetY_pre(alpha, beta, pi):
     y_pre = y_pre.sum(dim = 2)
     return y_pre
 
+class EarlyStopping:
+    def __init__(self, patience=4, delta=0):
+        self.patience = patience
+        self.delta = delta
+        self.best_score = None
+        self.counter = 0
+        self.stop_training = False
+
+    def __call__(self, val_loss):
+        if self.best_score is None:
+            self.best_score = val_loss
+        elif val_loss > self.best_score + self.delta:
+            self.counter += 1
+            if self.counter >= self.patience:
+                self.stop_training = True
+        else:
+            self.best_score = val_loss
+            self.counter = 0
+
 class Ensemble(nn.Module):
 
     def __init__(self):
         super().__init__()
 
         self.tau = tau #这里有一个需要添加上去的
-        self.dataloader = TestDataLoader(batch_size, data_path, T0, tau, index_wind, index_other)
         self.MultiProcess = MultiSourceProcess(batch_size, tau, M_wind, M_other)
 
         self.encoder = Encoder(input_size, hidden_size)
@@ -206,16 +224,18 @@ class trainer():
             self.device = torch.device("cpu")
         self.myEnsemble = Ensemble().to(self.device)
         self.optimizer = optim.Adam(self.myEnsemble.parameters(), lr=learning_rate)
-        self.dataloader = TestDataLoader(batch_size, data_path, T0, tau, index_wind, index_other)
-        self.test_dataloader = None # TODO
+        self.dataloader_train,self.dataloader_test  = loader(batch_size, data_path, T0, tau, index_wind, index_other)
+        self.early_stopping = EarlyStopping()
 
         self.show_y = []
         self.show_y_pre = []
+
     def train(self,epoch = 1):
-        self.myEnsemble.train()
+
         for i in range(epoch):
+            self.myEnsemble.train()
             loss_train = []
-            for batch, (en_x, wind_x, other_x, y) in enumerate(self.dataloader):
+            for batch, (en_x, wind_x, other_x, y) in enumerate(self.dataloader_train):
                 # to device
                 en_x, wind_x, other_x, y = en_x.to(self.device), wind_x.to(self.device), other_x.to(self.device), y.to(self.device)
                 alpha, beta, pi, y = self.myEnsemble(en_x, wind_x, other_x, y)
@@ -227,30 +247,33 @@ class trainer():
 
                 loss_train.append(loss)
             loss_train = sum(loss_train)/len(loss_train)
-            print(f'epoch {i+1}  {loss_train}')
+            loss_test = self.test()
+
+            self.early_stopping(loss_test)
+            if self.early_stopping.stop_training:
+                print("Early Stopping!")
+                break
+            print(f'epoch {i+1}  loss_train : {loss_train}, loss_test : {loss_test}')
 
     def test(self):
         self.myEnsemble.eval()
         with torch.no_grad():
             loss_test = []
-            for batch, (en_x, wind_x, other_x, y) in enumerate(self.dataloader):
+            for batch, (en_x, wind_x, other_x, y) in enumerate(self.dataloader_test):
                 en_x, wind_x, other_x, y = en_x.to(self.device), wind_x.to(self.device), other_x.to(self.device), y.to(self.device)
                 alpha, beta, pi, y = self.myEnsemble(en_x, wind_x, other_x, y)
-                #TODO use another test mode to analyse the y
-                y_pre = GetY_pre(alpha, beta, pi) # TODO
+                y_pre = GetY_pre(alpha, beta, pi)
 
                 loss = torch.abs(y - y_pre).mean().item() #全部的平均数
                 # print(f'batch {batch} loss {loss},has_nan_pre {has_nan_pre},has_nan_y {has_nan_y}')
                 loss_test.append(loss)
             loss_test = sum(loss_test)/len(loss_test)
-            print(f'loss is {loss_test}')
-            return Loss
+            return loss_test
 
     def get_show_data(self,index):
         self.myEnsemble.eval()
         with torch.no_grad():
-            self.dataloader = TestDataLoader(batch_size,data_path,T0,tau,index_wind,index_other,shuffle=False)
-            for batch, (en_x, wind_x, other_x, y) in enumerate(self.dataloader):
+            for batch, (en_x, wind_x, other_x, y) in enumerate(self.dataloader_test):
                 if batch == index :
                     en_x, wind_x, other_x, y = en_x.to(self.device), wind_x.to(self.device), other_x.to(self.device), y.to(self.device)
                     alpha, beta, pi, y = self.myEnsemble(en_x, wind_x, other_x, y)
@@ -269,8 +292,8 @@ class trainer():
         show_y_pre = self.show_y_pre[index, :]
 
         plt.figure(figsize=(13, 6))
-        plt.plot(show_y, linestyle='--', label='real')
-        plt.plot(show_y_pre, linestyle='-', label='pre')
+        plt.plot(show_y, linestyle='-', label='real')
+        plt.plot(show_y_pre, linestyle='--', label='pre')
         plt.legend()
         plt.savefig('new.png')
         plt.show()
@@ -291,7 +314,8 @@ class trainer():
 
 if __name__ == '__main__':
     mytrainer = trainer()
-    mytrainer.train(epoch= 30)
-    mytrainer.save(name = 'epoch_20_save')
+    mytrainer.train(epoch= 10)
+    mytrainer.save(name = 'epoch_10_save')
+    # 我们将训练和测试集分开
     # mytrainer.get_show_data()
     # mytrainer.show(1)

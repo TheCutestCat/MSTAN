@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import torch
 from torch.utils.data import Dataset, DataLoader
+from sklearn.model_selection import train_test_split
 
 def check(data_path):
     if not os.path.isfile(data_path):
@@ -27,17 +28,23 @@ class MultiSourceProcessDataset(Dataset):
         y = (y + 10) / 100 #进行一个大致的处理
         return torch.tensor(en_x.values).to(torch.float32),torch.tensor(wind_x.values).to(torch.float32),torch.tensor(other_x.values).to(torch.float32), torch.tensor(y.values).to(torch.float32)
 
-def TestDataLoader(batch_size,data_path,T0,tau,index_wind,index_other,shuffle=True):
-    # load the little data
+
+def loader(batch_size,data_path,T0,tau,index_wind,index_other):
     check(data_path)
-
-    """
-    [Btch tau M_wind + M_other]
-    """
     df = pd.read_csv(data_path)
+    train_df, test_df = df.loc[:0.8*len(df)],df.loc[0.8*len(df):]
 
-    MyDataset = MultiSourceProcessDataset(df,T0,tau,index_wind,index_other)
-    loader = DataLoader(MyDataset, batch_size=batch_size, shuffle=shuffle,drop_last = True)
-    return loader
+    MyDataset_train = MultiSourceProcessDataset(train_df,T0,tau,index_wind,index_other)
+    MyDataset_test = MultiSourceProcessDataset(train_df,T0,tau,index_wind,index_other)
+
+    loader_train = DataLoader(MyDataset_train, batch_size=batch_size, shuffle=True,drop_last = True)
+    loader_test = DataLoader(MyDataset_test, batch_size=batch_size, shuffle=False,drop_last = True)
+
+    return loader_test,loader_train
+
+
+
+
+
 
 
