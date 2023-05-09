@@ -1,4 +1,5 @@
 # all the single models
+import math
 import os
 
 import numpy as np
@@ -6,6 +7,7 @@ from matplotlib import pyplot as plt
 from torch import optim, random
 from torch.distributions import Beta
 import random
+from scipy.stats import beta as SCI_beta
 
 from torch.nn import init
 
@@ -191,6 +193,29 @@ class Norm(nn.Module):
         x = self.norm(x)
         return x
 
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model, max_len=5000):
+        super().__init__()
+        if(d_model%2 !=0):
+            raise ValueError("d_model is not pair, change the d_model to pair")
+        self.dropout = nn.Dropout(p=0.1)
+
+        # 计算位置编码矩阵
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)
+
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        # 添加位置编码到输入张量中
+        x = x + self.pe[:, :x.size(1)]
+        return self.dropout(x)
+
 def Loss_proba(alpha, beta, pi, y):
     beta_dist = Beta(alpha, beta)# 添加一个小数，防止生成函数的时候因为0的存在导致出现了问题
 
@@ -202,12 +227,20 @@ def Loss_proba(alpha, beta, pi, y):
 
     return loss
 
-def GetY_pre(alpha, beta, pi):
+def GetY_pre(alpha, beta, pi,confidence):
     # alpha * pi / (alpha + beta)
-    y_pre = torch.div(torch.mul(alpha,pi), torch.add(alpha,beta)) #都是一对一的运算，(batch,tau,m)
-    y_pre = y_pre.sum(dim = 2)
+    # y_pre = torch.div(torch.mul(alpha,pi), torch.add(alpha,beta)) #都是一对一的运算，(batch,tau,m)
+    # y_pre = y_pre.sum(dim = 2)
+    confidence = 0.5
+    lower_bound_percentile = (1 - confidence) / 2
+    upper_bound_percentile = 1 - lower_bound_percentile
 
-    return y_pre
+    # 计算置信区间
+    lower_bounds = SCI_beta.ppf(lower_bound_percentile, alpha, alpha)
+    upper_bounds = SCI_beta.ppf(upper_bound_percentile, alpha, alpha)
+    lower_bounds = torch.sum(torch.mul(lower_bounds,pi),dim=2)
+    upper_bounds = torch.sum(torch.mul(upper_bounds, pi), dim=2)
+    return lower_bounds,upper_bounds
 
 def set_seed(seed = 100):
     torch.manual_seed(seed)
@@ -215,6 +248,7 @@ def set_seed(seed = 100):
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
+
 
 class EarlyStopping:
     def __init__(self, patience=4, delta=0):
@@ -253,6 +287,7 @@ class Ensemble_proba(nn.Module):
         self.res2 = ResidualNet(input_size=input_dim, output_size=input_mix)
         self.norm1 = Norm(input_dim)
         self.norm2 = Norm(input_mix)
+        self.PE = PositionalEncoding(input_dim)
 
     def forward(self,en_x, wind_x, other_x, y):
         Decoder_in = self.MultiProcess(wind_x, other_x)  # [batch,tau,2]
@@ -264,8 +299,11 @@ class Ensemble_proba(nn.Module):
         output1= self.norm1(output1)
         output2 = self.norm1(output2)
         output = torch.cat((output1, output2), dim=1)  # batch T0 + tau input_dim 32 96 32
+
+        output = self.PE(output)
         output = self.self_attention(output)  # shape: (batch, T0 + tau, input_mix)  32 96 8
         output = output[:, -self.tau:, :]  # (batch, tau, input_mix)32 48 8
+
         output2 = self.res2(output2)
         output = torch.add(output,output2)
         output = self.norm2(output)# (batch, tau, input_mix)32 48 8
@@ -285,7 +323,7 @@ class trainer():
         self.optimizer = optim.Adam(self.myEnsemble.parameters(), lr=learning_rate)
         self.dataloader_train,self.dataloader_test  = loader(batch_size, data_path, T0, tau, index_wind, index_other)
         self.early_stopping = EarlyStopping()
-        self.lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.99)
+        self.lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.9)
 
         self.show_y = []
         self.show_y_pre = []
@@ -303,8 +341,6 @@ class trainer():
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
-                # print(f'loss {loss}')
-
                 loss_train.append(loss)
             self.lr_scheduler.step()
             loss_train = sum(loss_train)/len(loss_train)
@@ -316,7 +352,6 @@ class trainer():
                 break
             print(f'epoch {i+1:>3}  loss_train : {loss_train:.3f}, loss_test : {loss_test:.4f}, learning_rate :{self.lr_scheduler.get_last_lr()[0]:.6f}')
 
-
     def test(self):
         self.myEnsemble.eval()
         with torch.no_grad():
@@ -325,9 +360,8 @@ class trainer():
                 en_x, wind_x, other_x, y = en_x.to(self.device), wind_x.to(self.device), other_x.to(self.device), y.to(self.device)
                 alpha, beta, pi, y = self.myEnsemble(en_x, wind_x, other_x, y)
                 y_pre = GetY_pre(alpha, beta, pi)
-
-                loss = torch.abs(y - y_pre).mean().item() #全部的平均数
-                # print(f'batch {batch} loss {loss},has_nan_pre {has_nan_pre},has_nan_y {has_nan_y}')
+                loss = Loss_proba(alpha, beta, pi, y)
+                # loss = torch.abs(y - y_pre).mean().item() #全部的平均数
                 loss_test.append(loss)
             loss_test = sum(loss_test)/len(loss_test)
             return loss_test
@@ -340,22 +374,27 @@ class trainer():
                     en_x, wind_x, other_x, y = en_x.to(self.device), wind_x.to(self.device), other_x.to(self.device), y.to(self.device)
                     alpha, beta, pi, y = self.myEnsemble(en_x, wind_x, other_x, y)
 
-                    y_pre = GetY_pre(alpha, beta, pi)
+                    lower_bounds,upper_bounds = GetY_pre(alpha, beta, pi,confidence=0.5)
                     show_y = y #[0,:]
-                    show_y_pre = y_pre #[0,:]
+                    show_y_pre_lower = lower_bounds
+                    show_y_pre_upper = upper_bounds
                     show_y = show_y.cpu().detach().numpy()
-                    show_y_pre = show_y_pre.cpu().detach().numpy()
+                    show_y_pre_lower = show_y_pre_lower.cpu().detach().numpy()
+                    show_y_pre_upper = show_y_pre_upper.cpu().detach().numpy()
 
                     self.show_y = show_y
-                    self.show_y_pre = show_y_pre
+                    self.show_y_pre_lower = show_y_pre_lower
+                    self.show_y_pre_upper = show_y_pre_upper
                     break
     def show(self,index):
         show_y = self.show_y[index,:]
-        show_y_pre = self.show_y_pre[index, :]
+        show_y_pre_lower = self.show_y_pre_lower[index, :]
+        show_y_pre_upper = self.show_y_pre_upper[index, :]
 
         plt.figure(figsize=(13, 6))
         plt.plot(show_y, linestyle='-', label='real')
-        plt.plot(show_y_pre, linestyle='--', label='pre')
+        plt.plot(show_y_pre_lower, linestyle='--',color='yellow', label='pre')
+        plt.plot(show_y_pre_upper, linestyle='--',color='yellow', label='pre')
         plt.legend()
         plt.savefig('new.png')
         plt.show()

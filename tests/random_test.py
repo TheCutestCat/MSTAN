@@ -1,12 +1,20 @@
 import torch
-import torch.nn as nn
+from scipy.stats import beta
 
-# 定义输入张量
-x = torch.randn(2, 4, 8).to('cuda')
+# 定义 alpha 和 beta 参数
+a = torch.rand(32, 48, 10)
+b = torch.rand(32, 48, 10)
 
-# 定义 Layer Normalization 的维度
-normalized_shape = 8
+# 置信区间的端点
+confidence_interval = 0.9
+lower_bound_percentile = (1 - confidence_interval) / 2
+upper_bound_percentile = 1 - lower_bound_percentile
 
-x = nn.LayerNorm(x.size()[1:]).to('cuda')(x)
+# 计算置信区间
+lower_bounds = beta.ppf(lower_bound_percentile, a, b)
+upper_bounds = beta.ppf(upper_bound_percentile, a, b)
 
-print(x.shape)  # 输出：torch.Size([2, 4, 8])
+# 结果是形状为 (32, 48, 10) 的 NumPy 数组，其中每个元素表示相应 Beta 分布的 90% 置信区间的边界
+print("90% 置信区间的下限：\n", lower_bounds)
+print("90% 置信区间的上限：\n", upper_bounds)
+
