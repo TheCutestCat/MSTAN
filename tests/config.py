@@ -1,5 +1,5 @@
 
-data_path = 'data/test_small_data.csv'
+data_path = 'data/clean_big_data.csv'
 index_wind = ['wind10', 'wind30', 'wind50']
 index_other = ['angle10', 'angle30', 'angle50', 'temp', 'atmosphere', 'humidity']
 T0 = 48

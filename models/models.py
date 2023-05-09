@@ -231,15 +231,16 @@ def GetY_pre(alpha, beta, pi,confidence):
     # alpha * pi / (alpha + beta)
     # y_pre = torch.div(torch.mul(alpha,pi), torch.add(alpha,beta)) #都是一对一的运算，(batch,tau,m)
     # y_pre = y_pre.sum(dim = 2)
-    confidence = 0.5
+    pi = pi.numpy()
+    confidence = 0.2
     lower_bound_percentile = (1 - confidence) / 2
     upper_bound_percentile = 1 - lower_bound_percentile
 
     # 计算置信区间
-    lower_bounds = SCI_beta.ppf(lower_bound_percentile, alpha, alpha)
-    upper_bounds = SCI_beta.ppf(upper_bound_percentile, alpha, alpha)
-    lower_bounds = torch.sum(torch.mul(lower_bounds,pi),dim=2)
-    upper_bounds = torch.sum(torch.mul(upper_bounds, pi), dim=2)
+    lower_bounds = SCI_beta.ppf(lower_bound_percentile, alpha, beta)
+    upper_bounds = SCI_beta.ppf(upper_bound_percentile, alpha, beta)
+    lower_bounds = np.sum(lower_bounds * pi,axis=2)
+    upper_bounds = np.sum(upper_bounds * pi, axis=2)
     return lower_bounds,upper_bounds
 
 def set_seed(seed = 100):
@@ -373,14 +374,13 @@ class trainer():
                 if batch == index :
                     en_x, wind_x, other_x, y = en_x.to(self.device), wind_x.to(self.device), other_x.to(self.device), y.to(self.device)
                     alpha, beta, pi, y = self.myEnsemble(en_x, wind_x, other_x, y)
-
+                    alpha, beta, pi, y = alpha.cpu(), beta.cpu(), pi.cpu(), y.cpu()
                     lower_bounds,upper_bounds = GetY_pre(alpha, beta, pi,confidence=0.5)
+
                     show_y = y #[0,:]
                     show_y_pre_lower = lower_bounds
                     show_y_pre_upper = upper_bounds
                     show_y = show_y.cpu().detach().numpy()
-                    show_y_pre_lower = show_y_pre_lower.cpu().detach().numpy()
-                    show_y_pre_upper = show_y_pre_upper.cpu().detach().numpy()
 
                     self.show_y = show_y
                     self.show_y_pre_lower = show_y_pre_lower
