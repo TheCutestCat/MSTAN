@@ -151,7 +151,7 @@ class MixtureDensity(nn.Module):
         pi = torch.softmax(pi,dim = 2)
         return alpha, beta, pi
 
-def Loss(alpha, beta, pi, y):
+def Loss_proba(alpha, beta, pi, y):
     beta_dist = Beta(alpha, beta)# 添加一个小数，防止生成函数的时候因为0的存在导致出现了问题
 
     PdfValues = beta_dist.log_prob(y.unsqueeze(-1)).exp()  # (32, 5, 3)
@@ -176,7 +176,8 @@ class EarlyStopping:
         self.counter = 0
         self.stop_training = False
 
-    def __call__(self, val_loss):
+    def __call__(self, val_loss,patience):
+        self.patience = patience
         if self.best_score is None:
             self.best_score = val_loss
         elif val_loss > self.best_score + self.delta:
@@ -187,12 +188,12 @@ class EarlyStopping:
             self.best_score = val_loss
             self.counter = 0
 
-class Ensemble(nn.Module):
+class Ensemble_proba(nn.Module):
 
     def __init__(self):
         super().__init__()
 
-        self.tau = tau #这里有一个需要添加上去的
+        self.tau = tau
         self.MultiProcess = MultiSourceProcess(batch_size, tau, M_wind, M_other)
 
         self.encoder = Encoder(input_size, hidden_size)
@@ -217,20 +218,22 @@ class Ensemble(nn.Module):
         return alpha, beta, pi, Y
 
 class trainer():
-    def __init__(self):
+    def __init__(self,learning_rate = 0.001):
         if torch.cuda.is_available():
             self.device = torch.device("cuda")
         else:
             self.device = torch.device("cpu")
-        self.myEnsemble = Ensemble().to(self.device)
+        self.myEnsemble = Ensemble_proba().to(self.device)
         self.optimizer = optim.Adam(self.myEnsemble.parameters(), lr=learning_rate)
         self.dataloader_train,self.dataloader_test  = loader(batch_size, data_path, T0, tau, index_wind, index_other)
         self.early_stopping = EarlyStopping()
+        self.lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.9)
+
 
         self.show_y = []
         self.show_y_pre = []
 
-    def train(self,epoch = 1):
+    def train(self,epoch = 1,early_stop_patience = 4):
 
         for i in range(epoch):
             self.myEnsemble.train()
@@ -239,17 +242,18 @@ class trainer():
                 # to device
                 en_x, wind_x, other_x, y = en_x.to(self.device), wind_x.to(self.device), other_x.to(self.device), y.to(self.device)
                 alpha, beta, pi, y = self.myEnsemble(en_x, wind_x, other_x, y)
-                loss = Loss(alpha, beta, pi, y)
+                loss = Loss_proba(alpha, beta, pi, y)
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
                 # print(f'loss {loss}')
 
                 loss_train.append(loss)
+            self.lr_scheduler.step()
             loss_train = sum(loss_train)/len(loss_train)
             loss_test = self.test()
 
-            self.early_stopping(loss_test)
+            self.early_stopping(loss_test,patience = early_stop_patience)
             if self.early_stopping.stop_training:
                 print("Early Stopping!")
                 break
@@ -298,24 +302,16 @@ class trainer():
         plt.savefig('new.png')
         plt.show()
     def save(self,name = 'model'):
-        path ='..\save'
+        path ='save'
         name = name + '.pt'
         path = os.path.join(path,name)
         torch.save(self.myEnsemble.state_dict(), path)
         print(f'model saved at {path}')
 
     def load(self,name = 'model'):
-        path = '..\save'
+        path = 'save'
         name = name+'.pt'
         path = os.path.join(path,name)
         self.myEnsemble.load_state_dict(torch.load(path))
         print(f'model loaded from {path}')
 
-
-if __name__ == '__main__':
-    mytrainer = trainer()
-    mytrainer.train(epoch= 10)
-    mytrainer.save(name = 'epoch_10_save')
-    # 我们将训练和测试集分开
-    # mytrainer.get_show_data()
-    # mytrainer.show(1)
