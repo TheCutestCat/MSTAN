@@ -74,15 +74,27 @@ class MultiSourceProcess(nn.Module):
 
         return out #batch tau 2
 
+
+class GLU(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.dim = dim
+
+    def forward(self, x):
+        return torch.nn.functional.glu(x, dim=self.dim)
+
 class Encoder(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers=1):
         super(Encoder, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
+        self.glu = GLU(2)
+
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
 
     def forward(self, x):
         output, hidden = self.lstm(x)
+        output = self.glu(output)
         return output,hidden
 
 class Decoder(nn.Module):
@@ -90,10 +102,12 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
+        self.glu = GLU(2)
         self.lstm = nn.LSTM(output_size, hidden_size, num_layers, batch_first=True)
 
     def forward(self, x, hidden):
         output, _ = self.lstm(x, hidden)
+        output = self.glu(output)
         return output
 
 class Seq2Seq(nn.Module):
@@ -114,7 +128,7 @@ class SelfAttention(nn.Module):
         self.key = nn.Linear(input_dim, output_dim)
         self.value = nn.Linear(input_dim, output_dim)
         self.scale_factor = torch.sqrt(torch.tensor(output_dim, dtype=torch.float32))
-
+        self.glu = GLU(2)
     def forward(self, x):
         # x shape: (batch_size, seq_len, input_dim)
         batch_size, seq_len, input_dim = x.size()
@@ -126,7 +140,7 @@ class SelfAttention(nn.Module):
         attention_logits = torch.matmul(Q, K.transpose(-2, -1)) / self.scale_factor
         attention_weights = torch.softmax(attention_logits, dim=-1)
         attention_output = torch.matmul(attention_weights, V)
-
+        attention_output = self.glu(attention_output)
         return attention_output
 
 class Dense(nn.Module):
@@ -159,6 +173,23 @@ class MixtureDensity(nn.Module):
         pi = self.pi(x)
         pi = torch.softmax(pi,dim = 2)
         return alpha, beta, pi
+
+class ResidualNet(nn.Module):
+    def __init__(self,input_size, output_size):
+        super().__init__()
+        self.linear = nn.Linear(input_size, output_size)
+
+    def forward(self,x):
+        x = self.linear(x)
+        return x
+
+class Norm(nn.Module):
+    def __init__(self,shape):
+        super().__init__()
+        self.norm = nn.LayerNorm(shape)
+    def forward(self,x):
+        x = self.norm(x)
+        return x
 
 def Loss_proba(alpha, beta, pi, y):
     beta_dist = Beta(alpha, beta)# 添加一个小数，防止生成函数的时候因为0的存在导致出现了问题
@@ -217,18 +248,27 @@ class Ensemble_proba(nn.Module):
         self.decoder = Decoder(hidden_size, output_size)
         self.seq2seq = Seq2Seq(self.encoder, self.decoder)
         self.self_attention = SelfAttention(input_dim, output_dim)
-        self.mixtureDensity = MixtureDensity(d_attention, m)
-
+        self.mixtureDensity = MixtureDensity(input_mix, m)
+        self.res1 = ResidualNet(input_size = 2, output_size = input_dim)
+        self.res2 = ResidualNet(input_size=input_dim, output_size=input_mix)
+        self.norm1 = Norm(input_dim)
+        self.norm2 = Norm(input_mix)
 
     def forward(self,en_x, wind_x, other_x, y):
         Decoder_in = self.MultiProcess(wind_x, other_x)  # [batch,tau,2]
         Encoder_in = en_x  # [batch T0 2]
 
-        output1, output2 = self.seq2seq(Encoder_in, Decoder_in)
-        attention_in = torch.cat((output1, output2), dim=1)  # batch T0 + tau 64
-
-        output = self.self_attention(attention_in)  # shape: (batch, T0 + tau, 16)
-        output = output[:, -self.tau:, :]  # (batch, tau, 16)
+        output1, output2 = self.seq2seq(Encoder_in, Decoder_in) #这里面添加了GLU模块 batch T0 input_dim batch tau input_dim 32 48 32
+        output1 = torch.add(output1,self.res1(Encoder_in)) # batch T0 input_dim  32 48 32
+        output2 = torch.add(output2,self.res1(Decoder_in)) #ResidualNet
+        output1= self.norm1(output1)
+        output2 = self.norm1(output2)
+        output = torch.cat((output1, output2), dim=1)  # batch T0 + tau input_dim 32 96 32
+        output = self.self_attention(output)  # shape: (batch, T0 + tau, input_mix)  32 96 8
+        output = output[:, -self.tau:, :]  # (batch, tau, input_mix)32 48 8
+        output2 = self.res2(output2)
+        output = torch.add(output,output2)
+        output = self.norm2(output)# (batch, tau, input_mix)32 48 8
         alpha, beta, pi = self.mixtureDensity(output)  # (batch, tau, 3) (batch, tau, 3) (batch, tau, 3)  the parameter for almost all of them
         Y = y[:, -self.tau:]  # (batch, tau,)#只是一个二维的，后面对其进行了扩充
 
@@ -245,8 +285,7 @@ class trainer():
         self.optimizer = optim.Adam(self.myEnsemble.parameters(), lr=learning_rate)
         self.dataloader_train,self.dataloader_test  = loader(batch_size, data_path, T0, tau, index_wind, index_other)
         self.early_stopping = EarlyStopping()
-        self.lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.9)
-
+        self.lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.99)
 
         self.show_y = []
         self.show_y_pre = []

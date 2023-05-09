@@ -14,9 +14,10 @@ input_size = 2
 output_size = 2  # 只去输出一个对应的风速大小
 hidden_size = 64
 
-input_dim = hidden_size
+input_dim = 32 #hidden_size/2 因为添加上了glu模块
 d_attention = 16
-output_dim = d_attention
+output_dim = 16 #d_attention/2
+input_mix = 8 #output_dim/2
 seq_len = T0 + tau
 m = 1
 
