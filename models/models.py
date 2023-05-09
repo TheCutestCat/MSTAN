@@ -15,12 +15,18 @@ from tests.config import *
 class NonlinearDense(nn.Module):
     def __init__(self, Batch,tau,feature):
         super().__init__()
-        self.weight = nn.Parameter(torch.randn(Batch,tau,feature))
-        self.bias = nn.Parameter(torch.randn(Batch,tau,feature))
-
+        self.weight = nn.Parameter(torch.randn(tau,feature))
+        self.bias = nn.Parameter(torch.randn(tau,feature))
+        self.Batch = Batch
+        self.tau = tau
+        self.feature = feature
+        #需要是同样的参数的
     def forward(self, x):
+        weight = self.weight.expand(self.Batch, self.tau, self.feature)
+        bias = self.bias.expand(self.Batch, self.tau, self.feature)
+        # 最终会只去更新作为parameter的参数
 
-        return torch.relu(torch.mul(x, self.weight) + self.bias)# Batch,tau,M_wind
+        return torch.relu(torch.mul(x, weight) + bias)# Batch,tau,M_wind
 
 class MultiSourceProcess(nn.Module):
     """
@@ -42,13 +48,11 @@ class MultiSourceProcess(nn.Module):
         self.Dense_wind = NonlinearDense(self.batch,self.tau,self.M_wind)
         self.Dense_other = NonlinearDense(self.batch,self.tau,self.M_other)
 
-        self.Dense_wind_softmax = NonlinearDense(self.batch, self.tau, self.M_wind)
-        self.Dense_other_softmax = NonlinearDense(self.batch,self.tau,self.M_other)
         # 这个结果应该没问题的，还是需要继续去测试一下
     def forward(self, wind_x,other_x):
         X = torch.cat([wind_x,other_x],dim = 2)
-        X_wind_softmax = torch.relu(self.linear_wind(X))
-        X_other_softmax = torch.relu(self.linear_other(X))
+        X_wind_softmax = self.linear_wind(X)
+        X_other_softmax = self.linear_other(X)
 
         out_wind = self.Dense_wind(wind_x)
         out_wind_proba = F.softmax(X_wind_softmax,dim=2)
@@ -287,5 +291,6 @@ class trainer():
 
 if __name__ == '__main__':
     mytrainer = trainer()
-    mytrainer.get_show_data()
-    mytrainer.show(1)
+    mytrainer.train(epoch= 20)
+    # mytrainer.get_show_data()
+    # mytrainer.show(1)
