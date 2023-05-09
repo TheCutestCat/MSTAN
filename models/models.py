@@ -360,14 +360,12 @@ class trainer():
             for batch, (en_x, wind_x, other_x, y) in enumerate(self.dataloader_test):
                 en_x, wind_x, other_x, y = en_x.to(self.device), wind_x.to(self.device), other_x.to(self.device), y.to(self.device)
                 alpha, beta, pi, y = self.myEnsemble(en_x, wind_x, other_x, y)
-                y_pre = GetY_pre(alpha, beta, pi)
                 loss = Loss_proba(alpha, beta, pi, y)
-                # loss = torch.abs(y - y_pre).mean().item() #全部的平均数
                 loss_test.append(loss)
             loss_test = sum(loss_test)/len(loss_test)
             return loss_test
 
-    def get_show_data(self,index):
+    def get_show_data(self,index,confidence):
         self.myEnsemble.eval()
         with torch.no_grad():
             for batch, (en_x, wind_x, other_x, y) in enumerate(self.dataloader_test):
@@ -375,7 +373,7 @@ class trainer():
                     en_x, wind_x, other_x, y = en_x.to(self.device), wind_x.to(self.device), other_x.to(self.device), y.to(self.device)
                     alpha, beta, pi, y = self.myEnsemble(en_x, wind_x, other_x, y)
                     alpha, beta, pi, y = alpha.cpu(), beta.cpu(), pi.cpu(), y.cpu()
-                    lower_bounds,upper_bounds = GetY_pre(alpha, beta, pi,confidence=0.5)
+                    lower_bounds,upper_bounds = GetY_pre(alpha, beta, pi,confidence=confidence)
 
                     show_y = y #[0,:]
                     show_y_pre_lower = lower_bounds
@@ -395,6 +393,7 @@ class trainer():
         plt.plot(show_y, linestyle='-', label='real')
         plt.plot(show_y_pre_lower, linestyle='--',color='yellow', label='pre')
         plt.plot(show_y_pre_upper, linestyle='--',color='yellow', label='pre')
+        plt.ylim(0,1)
         plt.legend()
         plt.savefig('new.png')
         plt.show()

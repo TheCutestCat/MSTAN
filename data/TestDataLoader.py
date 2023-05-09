@@ -25,7 +25,7 @@ class MultiSourceProcessDataset(Dataset):
         en_x = self.data.loc[index:index+self.T0-1, ['wind10','angle10']]
         wind_x, other_x = self.data.loc[index+self.T0:index+self.T0+self.tau-1, self.index_wind],self.data.loc[index+self.T0:index+self.T0+self.tau-1, self.index_other]
         y = self.data.loc[index:index+self.T0+self.tau-1, 'power']
-        y = (y + 10) / 100 #进行一个大致的处理
+        y = ((y + 0.1) / 200) #进行一个大致的处理
         return torch.tensor(en_x.values).to(torch.float32),torch.tensor(wind_x.values).to(torch.float32),torch.tensor(other_x.values).to(torch.float32), torch.tensor(y.values).to(torch.float32)
 
 
