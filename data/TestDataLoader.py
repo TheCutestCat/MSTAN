@@ -51,7 +51,7 @@ class Seq2seq_value(Dataset):
         self.data = data
         self.T0 = T0
         self.tau = tau
-        self.index_seq2seq = ['wind10','angle10']
+        self.index_seq2seq = ['wind10', 'temp', 'atmosphere', 'humidity', 'en_month','en_hour', 'en_cos_angle']
 
     def __len__(self):
         return len(self.data)-(self.T0+self.tau)
@@ -63,12 +63,14 @@ class Seq2seq_value(Dataset):
 
         return torch.tensor(en_x.values).to(torch.float32),torch.tensor(en_x_pre.values).to(torch.float32), torch.tensor(y.values).to(torch.float32)
 
+#this might not be very sueful
 class Seq2seq_value_moredata(Dataset):
     def __init__(self, data,T0,tau):
         self.data = data
         self.T0 = T0
         self.tau = tau
-        self.index_seq2seq = ['wind10','angle10']
+        # ['wind10', 'temp', 'atmosphere', 'humidity', 'power', 'en_month','en_hour', 'en_cos_angle']
+        self.index_seq2seq = ['wind10', 'temp', 'atmosphere', 'humidity', 'en_month','en_hour', 'en_cos_angle']
 
     def __len__(self):
         return len(self.data)-(self.T0+self.tau)
@@ -96,7 +98,7 @@ class DatasetShow(Dataset):
     def __getitem__(self, index):
         # index_en_x = [index * self.tau, index * self.tau+self.T0-1]
         # index_en_x_pre = [index * self.tau+self.T0, index * self.tau+self.T0+self.tau-1]
-        column_x = ['wind10','angle10']
+        column_x = ['wind10', 'temp', 'atmosphere', 'humidity', 'en_month','en_hour', 'en_cos_angle']
         en_x = self.data.loc[self.index_begin+index * self.tau: self.index_begin+index * self.tau+self.T0-1,column_x] #
         en_x_pre = self.data.loc[self.index_begin+index * self.tau++self.T0: self.index_begin+index * self.tau + self.T0+self.tau - 1,column_x]
         y = self.data.loc[self.index_begin+index * self.tau+self.T0 : self.index_begin+index * self.tau + self.T0+self.tau - 1, 'power']

@@ -9,6 +9,8 @@ from Models.models import Encoder, Decoder, Seq2Seq, EarlyStopping
 
 from utils.tools import set_seed,Loss_value
 
+# ['wind10', 'temp', 'atmosphere', 'humidity', 'power', 'en_month','en_hour', 'en_cos_angle']
+
 class Seq2seq(nn.Module):
     def __init__(self):
         super().__init__()
@@ -17,8 +19,8 @@ class Seq2seq(nn.Module):
         self.tau =tau
         self.batch = batch_size
         self.hidden_size = hidden_size
-        self.input_size = 2 #就是输入dim = -1的size 这里我们采用 wind10 angle10来计算
-        self.output_size = 2
+        self.input_size = 7 #就是输入dim = -1的size 这里我们采用 wind10 angle10来计算
+        self.output_size = 7 #这个好像也是同样的输入
         # model
         self.encoder = Encoder(self.input_size,self.hidden_size)
         self.decoder = Decoder(self.hidden_size,self.output_size) #长度在这里是无关的
