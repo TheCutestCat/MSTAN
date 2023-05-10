@@ -1,5 +1,4 @@
 import os
-
 import torch
 import torch.nn as nn
 from matplotlib import pyplot as plt
@@ -63,8 +62,8 @@ class trainer_MSTAN_value():
             self.device = torch.device("cuda")
         else:
             self.device = torch.device("cpu")
-        self.myEnsemble = MSTAN_value().to(self.device)
-        self.optimizer = optim.Adam(self.myEnsemble.parameters(), lr=learning_rate)
+        self.mymodel = MSTAN_value().to(self.device)
+        self.optimizer = optim.Adam(self.mymodel.parameters(), lr=learning_rate)
         self.dataloader_train,self.dataloader_test  = loader_value(batch_size, data_path, T0, tau, index_wind, index_other)
         self.early_stopping = EarlyStopping()
         self.lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.9)
@@ -75,12 +74,12 @@ class trainer_MSTAN_value():
     def train(self,epoch = 1,early_stop_patience = 4):
 
         for i in range(epoch):
-            self.myEnsemble.train()
+            self.mymodel.train()
             loss_train = []
             for batch, (en_x, wind_x, other_x, y) in enumerate(self.dataloader_train):
                 # to device
                 en_x, wind_x, other_x, y = en_x.to(self.device), wind_x.to(self.device), other_x.to(self.device), y.to(self.device)
-                Y_pre,Y = self.myEnsemble(en_x, wind_x, other_x, y)
+                Y_pre,Y = self.mymodel(en_x, wind_x, other_x, y)
                 loss = Loss_value(Y_pre,Y)
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -97,24 +96,24 @@ class trainer_MSTAN_value():
             print(f'epoch {i+1:>3}  loss_train : {loss_train:.3f}, loss_test : {loss_test:.4f}, learning_rate :{self.lr_scheduler.get_last_lr()[0]:.6f}')
 
     def test(self):
-        self.myEnsemble.eval()
+        self.mymodel.eval()
         with torch.no_grad():
             loss_test = []
             for batch, (en_x, wind_x, other_x, y) in enumerate(self.dataloader_test):
                 en_x, wind_x, other_x, y = en_x.to(self.device), wind_x.to(self.device), other_x.to(self.device), y.to(self.device)
-                Y_pre, Y = self.myEnsemble(en_x, wind_x, other_x, y)
+                Y_pre, Y = self.mymodel(en_x, wind_x, other_x, y)
                 loss = Loss_value(Y_pre,Y)
                 loss_test.append(loss)
             loss_test = sum(loss_test)/len(loss_test)
             return loss_test
 
     def get_show_data(self,index,confidence):
-        self.myEnsemble.eval()
+        self.mymodel.eval()
         with torch.no_grad():
             for batch, (en_x, wind_x, other_x, y) in enumerate(self.dataloader_test):
                 if batch == index :
                     en_x, wind_x, other_x, y = en_x.to(self.device), wind_x.to(self.device), other_x.to(self.device), y.to(self.device)
-                    Y_pre,Y = self.myEnsemble(en_x, wind_x, other_x, y)
+                    Y_pre,Y = self.mymodel(en_x, wind_x, other_x, y)
                     Y_pre,Y = Y_pre.cpu(), Y.cpu()
 
                     self.show_y = Y #[0,:]
@@ -137,12 +136,12 @@ class trainer_MSTAN_value():
         path ='save'
         name = name + '.pt'
         path = os.path.join(path,name)
-        torch.save(self.myEnsemble.state_dict(), path)
+        torch.save(self.mymodel.state_dict(), path)
         print(f'model saved at {path}')
 
     def load(self,name = 'model'):
         path = 'save'
         name = name+'.pt'
         path = os.path.join(path,name)
-        self.myEnsemble.load_state_dict(torch.load(path))
+        self.mymodel.load_state_dict(torch.load(path))
         print(f'model loaded from {path}')

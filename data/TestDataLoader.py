@@ -46,6 +46,22 @@ class MSTAN_value(Dataset):
         # y = ((y + 0.1) / 200)
         return torch.tensor(en_x.values).to(torch.float32),torch.tensor(wind_x.values).to(torch.float32),torch.tensor(other_x.values).to(torch.float32), torch.tensor(y.values).to(torch.float32)
 
+class Seq2seq_value(Dataset):
+    def __init__(self, data,T0,tau):
+        self.data = data
+        self.T0 = T0
+        self.tau = tau
+        self.index_seq2seq = ['wind10','angle10']
+
+    def __len__(self):
+        return len(self.data)-(self.T0+self.tau)
+
+    def __getitem__(self, index):
+        en_x = self.data.loc[index:index+self.T0-1, self.index_seq2seq]
+        en_x_pre = self.data.loc[index+self.T0:index+self.T0+self.tau-1, self.index_seq2seq]
+        y = self.data.loc[index+self.T0:index+self.T0+self.tau-1, 'power'] #tau
+
+        return torch.tensor(en_x.values).to(torch.float32),torch.tensor(en_x_pre.values).to(torch.float32), torch.tensor(y.values).to(torch.float32)
 
 def loader_proba(batch_size,data_path,T0,tau,index_wind,index_other):
     check(data_path)
@@ -58,7 +74,7 @@ def loader_proba(batch_size,data_path,T0,tau,index_wind,index_other):
     loader_train = DataLoader(MyDataset_train, batch_size=batch_size, shuffle=True,drop_last = True)
     loader_test = DataLoader(MyDataset_test, batch_size=batch_size, shuffle=False,drop_last = True)
 
-    return loader_test,loader_train
+    return loader_train,loader_test
 
 def loader_value(batch_size,data_path,T0,tau,index_wind,index_other):
     check(data_path)
@@ -71,8 +87,20 @@ def loader_value(batch_size,data_path,T0,tau,index_wind,index_other):
     loader_train = DataLoader(MyDataset_train, batch_size=batch_size, shuffle=True,drop_last = True)
     loader_test = DataLoader(MyDataset_test, batch_size=batch_size, shuffle=False,drop_last = True)
 
-    return loader_test,loader_train
+    return loader_train,loader_test
 
+def loader_seq2seq_value(batch_size,data_path,T0,tau):
+    check(data_path)
+    df = pd.read_csv(data_path)
+    train_df, test_df = df.loc[:0.8*len(df)],df.loc[0.8*len(df):]
+
+    MyDataset_train = Seq2seq_value(train_df,T0,tau)
+    MyDataset_test = Seq2seq_value(train_df,T0,tau)
+
+    loader_train = DataLoader(MyDataset_train, batch_size=batch_size, shuffle=True,drop_last = True)
+    loader_test = DataLoader(MyDataset_test, batch_size=batch_size, shuffle=False,drop_last = True)
+
+    return loader_train,loader_test
 
 
 
