@@ -73,7 +73,7 @@ class GLU(nn.Module):
         return torch.nn.functional.glu(x, dim=self.dim)
 
 class Encoder(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers=1):
+    def __init__(self, input_size, hidden_size, num_layers=2):
         super(Encoder, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
@@ -83,11 +83,11 @@ class Encoder(nn.Module):
 
     def forward(self, x):
         output, hidden = self.lstm(x)
-        output = self.glu(output)
+        # output = self.glu(output)
         return output,hidden
 
 class Decoder(nn.Module):
-    def __init__(self, hidden_size, output_size, num_layers=1):
+    def __init__(self, hidden_size, output_size, num_layers=2):
         super(Decoder, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
@@ -96,7 +96,7 @@ class Decoder(nn.Module):
 
     def forward(self, x, hidden):
         output, _ = self.lstm(x, hidden)
-        output = self.glu(output)
+        # output = self.glu(output)
         return output
 
 class Seq2Seq(nn.Module):

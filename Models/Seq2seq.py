@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 from torch import optim
 from data.TestDataLoader import loader_seq2seq_value
 from config import *
-from models import Encoder, Decoder, Seq2Seq, EarlyStopping
+from Models.models import Encoder, Decoder, Seq2Seq, EarlyStopping
 
 from utils.tools import Loss_proba, GetY_pre, set_seed,Loss_value
 
@@ -17,14 +17,18 @@ class Seq2seq(nn.Module):
         self.tau =tau
         self.batch = batch_size
         self.hidden_size = hidden_size
+        self.input_size = 2 #就是输入dim = -1的size 这里我们采用 wind10 angle10来计算
+        self.output_size = 2
         # model
-        self.encoder = Encoder(self.T0,self.hidden_size)
-        self.decoder = Decoder(self.hidden_size,self.tau)
+        self.encoder = Encoder(self.input_size,self.hidden_size)
+        self.decoder = Decoder(self.hidden_size,self.output_size) #长度在这里是无关的
         self.seq2seq = Seq2Seq(self.encoder, self.decoder)
+        self.linear = nn.Linear(self.hidden_size,1)
 
     def forward(self,Encoder_in,Decoder_in,y):
 
         _, y_pre = self.seq2seq(Encoder_in, Decoder_in)
+        y_pre = self.linear(y_pre).squeeze()
         return y,y_pre
 
 class trainer_seq2seq():
@@ -51,7 +55,7 @@ class trainer_seq2seq():
             for batch, (en_x, en_x_pre, y) in enumerate(self.dataloader_train):
                 # to device
                 en_x, en_x_pre, y = en_x.to(self.device), en_x_pre.to(self.device), y.to(self.device)
-                Y_pre,Y = self.mymodel(en_x, en_x_pre, y)
+                Y,Y_pre = self.mymodel(en_x, en_x_pre, y)
                 loss = Loss_value(Y_pre,Y)
                 self.optimizer.zero_grad()
                 loss.backward()
