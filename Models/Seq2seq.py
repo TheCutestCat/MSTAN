@@ -7,7 +7,7 @@ from data.TestDataLoader import loader_seq2seq_value,loader_show
 from config import *
 from Models.models import Encoder, Decoder, Seq2Seq, EarlyStopping
 
-from utils.tools import Loss_proba, GetY_pre, set_seed,Loss_value
+from utils.tools import set_seed,Loss_value
 
 class Seq2seq(nn.Module):
     def __init__(self):
@@ -23,7 +23,7 @@ class Seq2seq(nn.Module):
         self.encoder = Encoder(self.input_size,self.hidden_size)
         self.decoder = Decoder(self.hidden_size,self.output_size) #长度在这里是无关的
         self.seq2seq = Seq2Seq(self.encoder, self.decoder)
-        self.linear = nn.Linear(self.hidden_size,1)
+        self.linear = nn.Linear(self.hidden_size,1) #最终的输出为1
 
     def forward(self,Encoder_in,Decoder_in,y):
 
@@ -44,7 +44,6 @@ class trainer_seq2seq():
         self.dataloader_show = loader_show(data_path,T0,tau,index_begin = 100,index_end = 200)
         self.early_stopping = EarlyStopping()
         self.lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.9)
-
 
     def train(self,epoch = 1,early_stop_patience = 4):
 
@@ -97,7 +96,9 @@ class trainer_seq2seq():
         plt.plot(Y_target, linestyle='-', label='real')
         plt.plot(Y_forcast, linestyle='--',color='yellow', label='pre')
         plt.legend()
+        plt.savefig('save/picture')
         plt.show()
+
     def save(self,name = 'model'):
         path ='save'
         name = name + '.pt'

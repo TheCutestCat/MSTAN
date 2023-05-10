@@ -63,6 +63,23 @@ class Seq2seq_value(Dataset):
 
         return torch.tensor(en_x.values).to(torch.float32),torch.tensor(en_x_pre.values).to(torch.float32), torch.tensor(y.values).to(torch.float32)
 
+class Seq2seq_value_moredata(Dataset):
+    def __init__(self, data,T0,tau):
+        self.data = data
+        self.T0 = T0
+        self.tau = tau
+        self.index_seq2seq = ['wind10','angle10']
+
+    def __len__(self):
+        return len(self.data)-(self.T0+self.tau)
+
+    def __getitem__(self, index):
+        en_x = self.data.loc[index:index+self.T0-1, self.index_seq2seq]
+        en_x_pre = self.data.loc[index+self.T0:index+self.T0+self.tau-1, self.index_seq2seq]
+        y = self.data.loc[index+self.T0:index+self.T0+self.tau-1, 'power'] #tau
+
+        return torch.tensor(en_x.values).to(torch.float32),torch.tensor(en_x_pre.values).to(torch.float32), torch.tensor(y.values).to(torch.float32)
+
 class DatasetShow(Dataset):
     def __init__(self,data,T0,tau,index_begin,index_end):
         self.data = data
@@ -82,7 +99,7 @@ class DatasetShow(Dataset):
         column_x = ['wind10','angle10']
         en_x = self.data.loc[self.index_begin+index * self.tau: self.index_begin+index * self.tau+self.T0-1,column_x] #
         en_x_pre = self.data.loc[self.index_begin+index * self.tau++self.T0: self.index_begin+index * self.tau + self.T0+self.tau - 1,column_x]
-        y = self.data.loc[index * self.tau++self.T0 : index * self.tau + self.T0+self.tau - 1, 'power']
+        y = self.data.loc[self.index_begin+index * self.tau+self.T0 : self.index_begin+index * self.tau + self.T0+self.tau - 1, 'power']
         return torch.tensor(en_x.values).to(torch.float32),torch.tensor(en_x_pre.values).to(torch.float32),torch.tensor(y.values).to(torch.float32)
 
 def loader_proba(batch_size,data_path,T0,tau,index_wind,index_other):
@@ -134,6 +151,6 @@ def loader_show(data_path,T0,tau,index_begin,index_end,batch_size = 1):
 def show(data_path,T0,index_begin,index_end):
     check(data_path)
     df = pd.read_csv(data_path)
-    df = df.loc[-2*T0+index_begin:-2*T0+index_end,'power']
+    df = df.loc[index_begin+T0:index_end+T0,'power']
     return df.squeeze().tolist()
 

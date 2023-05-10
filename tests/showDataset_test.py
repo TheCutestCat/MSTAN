@@ -1,12 +1,12 @@
 from matplotlib import pyplot as plt
-
 from data.TestDataLoader import loader_show,show
+# this finally works
 batch_size = 1
 data_path = '../data/test_small_data.csv'
 T0 = 32
 tau = 32
 index_begin = 100
-index_end = 200
+index_end = 1000
 dataloader = loader_show(data_path,T0,tau,index_begin,index_end)
 y_save = []
 iters = 0
