@@ -44,8 +44,7 @@ class trainer_seq2seq():
         self.dataloader_show = loader_show(data_path,T0,tau,index_begin = 100,index_end = 200)
         self.early_stopping = EarlyStopping()
         self.lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.9)
-        self.show_y = []
-        self.show_y_pre = []
+
 
     def train(self,epoch = 1,early_stop_patience = 4):
 
@@ -83,17 +82,21 @@ class trainer_seq2seq():
             loss_test = sum(loss_test) / len(loss_test)
             return loss_test
 
-    def show(self,index):
-        show_y = self.show_y[index,:]
-        show_y_pre = self.show_y_pre[index, :]
-
+    def show(self,index_begin= 100, index_end = 200):
+        dataloader_show = loader_show(data_path, T0, tau, index_begin, index_end)
+        Y_target = []
+        Y_forcast = []
+        for i, (en_x, en_x_pre, y) in enumerate(dataloader_show):
+            en_x, en_x_pre, y = en_x.to(self.device), en_x_pre.to(self.device), y.to(self.device)
+            Y, Y_pre = self.mymodel(en_x, en_x_pre, y)
+            Y,Y_pre = Y.cpu().squeeze().tolist(),Y_pre.cpu().squeeze().tolist()
+            Y_target += Y
+            Y_forcast += Y_pre
 
         plt.figure(figsize=(13, 6))
-        plt.plot(show_y, linestyle='-', label='real')
-        plt.plot(show_y_pre, linestyle='--',color='yellow', label='pre')
-        plt.ylim(0,1)
+        plt.plot(Y_target, linestyle='-', label='real')
+        plt.plot(Y_forcast, linestyle='--',color='yellow', label='pre')
         plt.legend()
-        plt.savefig('new.png')
         plt.show()
     def save(self,name = 'model'):
         path ='save'
