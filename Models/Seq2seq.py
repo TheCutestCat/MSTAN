@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 from matplotlib import pyplot as plt
 from torch import optim
-from data.TestDataLoader import loader_seq2seq_value
+from data.TestDataLoader import loader_seq2seq_value,loader_show
 from config import *
 from Models.models import Encoder, Decoder, Seq2Seq, EarlyStopping
 
@@ -41,9 +41,9 @@ class trainer_seq2seq():
         self.mymodel = Seq2seq().to(self.device)
         self.optimizer = optim.Adam(self.mymodel.parameters(), lr=learning_rate)
         self.dataloader_train, self.dataloader_test = loader_seq2seq_value(batch_size, data_path, T0, tau)
+        self.dataloader_show = loader_show(data_path,T0,tau,index_begin = 100,index_end = 200)
         self.early_stopping = EarlyStopping()
         self.lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.9)
-
         self.show_y = []
         self.show_y_pre = []
 

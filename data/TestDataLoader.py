@@ -63,6 +63,28 @@ class Seq2seq_value(Dataset):
 
         return torch.tensor(en_x.values).to(torch.float32),torch.tensor(en_x_pre.values).to(torch.float32), torch.tensor(y.values).to(torch.float32)
 
+class DatasetShow(Dataset):
+    def __init__(self,data,T0,tau,index_begin,index_end):
+        self.data = data
+        self.T0 = T0
+        self.tau = tau
+        self.index_begin = index_begin
+        self.index_end = index_end
+        if(self.index_begin <= self.T0):
+            raise ValueError('idnex_begin should lager than T0')
+        if(self.index_end > len(self.data) + self.tau or self.index_end < self.index_begin + self.tau):
+            raise ValueError('index_end out of bound')
+    def __len__(self):
+        return int(1 + (self.index_end - self.index_begin)/self.tau) #控制len来控制最后的长度
+    def __getitem__(self, index):
+        # index_en_x = [index * self.tau, index * self.tau+self.T0-1]
+        # index_en_x_pre = [index * self.tau+self.T0, index * self.tau+self.T0+self.tau-1]
+        column_x = ['wind10','angle10']
+        en_x = self.data.loc[self.index_begin+index * self.tau: self.index_begin+index * self.tau+self.T0-1,column_x] #
+        en_x_pre = self.data.loc[self.index_begin+index * self.tau++self.T0: self.index_begin+index * self.tau + self.T0+self.tau - 1,column_x]
+        y = self.data.loc[index * self.tau++self.T0 : index * self.tau + self.T0+self.tau - 1, 'power']
+        return torch.tensor(en_x.values).to(torch.float32),torch.tensor(en_x_pre.values).to(torch.float32),torch.tensor(y.values).to(torch.float32)
+
 def loader_proba(batch_size,data_path,T0,tau,index_wind,index_other):
     check(data_path)
     df = pd.read_csv(data_path)
@@ -102,6 +124,16 @@ def loader_seq2seq_value(batch_size,data_path,T0,tau):
 
     return loader_train,loader_test
 
+def loader_show(data_path,T0,tau,index_begin,index_end,batch_size = 1):
+    check(data_path)
+    df = pd.read_csv(data_path)
+    Dataset = DatasetShow(df,T0,tau,index_begin,index_end)
+    loader = DataLoader(Dataset, batch_size=batch_size, shuffle=False, drop_last=True)
+    return loader
 
-
+def show(data_path,T0,index_begin,index_end):
+    check(data_path)
+    df = pd.read_csv(data_path)
+    df = df.loc[-2*T0+index_begin:-2*T0+index_end,'power']
+    return df.squeeze().tolist()
 
