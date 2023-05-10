@@ -222,4 +222,11 @@ class EarlyStopping:
             self.best_score = val_loss
             self.counter = 0
 
+class mixtureDensity_value(nn.Module):
+    def __init__(self,input_size):
+        super().__init__()
+        self.linear = nn.Linear(input_size,1)
+    def forward(self,x):
+        x = self.linear(x)
+        return x
 

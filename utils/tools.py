@@ -38,3 +38,8 @@ def set_seed(seed = 100):
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
+
+def Loss_value(Y_pre,Y):
+    diff = torch.abs(Y_pre - Y)
+    output = diff.mean()
+    return output

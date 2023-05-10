@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 from torch import optim
 
 from config import *
-from data.TestDataLoader import loader
+from data.TestDataLoader import loader_proba
 from Models.models import MultiSourceProcess, Encoder, Decoder, Seq2Seq, SelfAttention, MixtureDensity, \
     ResidualNet, Norm, PositionalEncoding, EarlyStopping
 from utils.tools import Loss_proba, GetY_pre, set_seed
@@ -63,7 +63,7 @@ class trainer_MSTAN_proba():
             self.device = torch.device("cpu")
         self.myEnsemble = MSTAN_proba().to(self.device)
         self.optimizer = optim.Adam(self.myEnsemble.parameters(), lr=learning_rate)
-        self.dataloader_train,self.dataloader_test  = loader(batch_size, data_path, T0, tau, index_wind, index_other)
+        self.dataloader_train,self.dataloader_test  = loader_proba(batch_size, data_path, T0, tau, index_wind, index_other)
         self.early_stopping = EarlyStopping()
         self.lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.9)
 

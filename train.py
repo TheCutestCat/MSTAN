@@ -1,9 +1,9 @@
-from Models.MSTAN import trainer_MSTAN_proba
+from Models.MSTAN_value import trainer_MSTAN_value
 from config import *
 
 if __name__ == '__main__':
-    mytrainer = trainer_MSTAN_proba(learning_rate= 0.0005)
-    mytrainer.load(name = 'test_loss')
+    mytrainer = trainer_MSTAN_value(learning_rate= 0.002)
+    # mytrainer.load(name = 'test_loss')
     mytrainer.train(epoch= 10,early_stop_patience= 2)
     mytrainer.save(name = 'test_loss')
     # 我们将训练和测试集分开
