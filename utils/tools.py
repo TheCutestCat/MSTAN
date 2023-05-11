@@ -1,8 +1,9 @@
 import random
 import numpy as np
 import torch
+from matplotlib import pyplot as plt
 from torch.distributions import Beta
-from scipy.stats import beta as SCI_beta
+from scipy.stats import beta as SCI_beta, gaussian_kde
 
 
 def Loss_proba(alpha, beta, pi, y):
@@ -43,3 +44,23 @@ def Loss_value(Y_pre,Y):
     diff = torch.abs(Y_pre - Y)
     output = diff.mean()
     return output
+
+def get_bound(Y_forcast,Y_target,confidence = 0.5):
+    Y_target,Y_forcast = np.array(Y_target),np.array(Y_forcast)
+    error = Y_forcast - Y_target
+    if(confidence >=1 or confidence <=0):
+        raise ValueError('confidence should between 0 and 1')
+    kde = gaussian_kde(error)
+    # 从 KDE 生成新的样本
+    num_samples = 10000
+    samples = kde.resample(num_samples)
+    # 计算 25% 和 75% 分位数
+    lower_bound = np.percentile(samples, 50 - confidence*100 / 2)
+    upper_bound = np.percentile(samples, 50 + confidence*100 / 2)
+
+    Y_forcast_lower, Y_forcast_upper = Y_forcast + lower_bound,Y_forcast + upper_bound
+    plt.plot(Y_forcast_lower,label = 'low')
+    plt.plot(Y_forcast_upper, label='up')
+    plt.legend()
+    plt.show()
+    return lower_bound,upper_bound

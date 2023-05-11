@@ -1,5 +1,5 @@
 
-data_path = 'data/clean_data_20000.csv' #注意去掉末尾的 ‘.csv’
+data_path = 'data/clean_data_5000.csv' #注意去掉末尾的 ‘.csv’
 index_wind = ['wind10', 'wind30', 'wind50']
 index_other = ['angle10', 'angle30', 'angle50', 'temp', 'atmosphere', 'humidity']
 T0 = 48

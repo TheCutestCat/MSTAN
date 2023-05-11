@@ -83,7 +83,7 @@ class trainer_seq2seq():
             loss_test = sum(loss_test) / len(loss_test)
             return loss_test
 
-    def show(self,index_begin= 100, index_end = 200):
+    def show(self,show =True,index_begin= 100, index_end = 200):
         dataloader_show = loader_show(data_path, T0, tau, index_begin, index_end)
         Y_target = []
         Y_forcast = []
@@ -93,13 +93,14 @@ class trainer_seq2seq():
             Y,Y_pre = Y.cpu().squeeze().tolist(),Y_pre.cpu().squeeze().tolist()
             Y_target += Y
             Y_forcast += Y_pre
-
-        plt.figure(figsize=(13, 6))
-        plt.plot(Y_target, linestyle='-', label='real')
-        plt.plot(Y_forcast, linestyle='--',color='yellow', label='pre')
-        plt.legend()
-        plt.savefig('save/picture')
-        plt.show()
+        if(show):
+            plt.figure(figsize=(13, 6))
+            plt.plot(Y_target, linestyle='-',color='blue', label='real')
+            plt.plot(Y_forcast, linestyle='--',color='red', label='pre')
+            plt.legend()
+            plt.savefig('save/picture')
+            plt.show()
+        return Y_target,Y_forcast
 
     def save(self,name = 'model'):
         path ='save'
