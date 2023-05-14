@@ -167,9 +167,11 @@ class ResidualNet(nn.Module):
     def __init__(self,input_size, output_size):
         super().__init__()
         self.linear = nn.Linear(input_size, output_size)
+        self.relu = nn.ReLU()
 
     def forward(self,x):
         x = self.linear(x)
+        x = self.relu(x) #may be not very necessary
         return x
 
 class Norm(nn.Module):

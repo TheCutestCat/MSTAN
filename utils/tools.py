@@ -45,7 +45,7 @@ def Loss_value(Y_pre,Y):
     output = diff.mean()
     return output
 
-def get_bound(Y_forcast,Y_target,confidence = 0.5):
+def get_bound(Y_forcast,Y_target,max = 100,confidence = 0.5):
     Y_target,Y_forcast = np.array(Y_target),np.array(Y_forcast)
     error = Y_forcast - Y_target
     if(confidence >=1 or confidence <=0):
@@ -59,6 +59,8 @@ def get_bound(Y_forcast,Y_target,confidence = 0.5):
     upper_bound = np.percentile(samples, 50 + confidence*100 / 2)
 
     Y_forcast_lower, Y_forcast_upper = Y_forcast + lower_bound,Y_forcast + upper_bound
+    Y_forcast_lower = np.where(Y_forcast_lower < 0, 0, Y_forcast_lower)
+    Y_forcast_upper = np.where(Y_forcast_upper > max, max, Y_forcast_upper)
     plt.plot(Y_forcast_lower,label = 'low')
     plt.plot(Y_forcast_upper, label='up')
     plt.legend()
