@@ -4,7 +4,7 @@
 - then we trained the Seq2seq mdoel, very simple but it works very well..
 ## Detail for Seq2seq model
 - 15min a point, use **48** data to predict the next **48** data 
-- the feature that we use is just **wind speed**,  **wind angle **, The rest of the data is not very impactful, but adding them will improve performance a bit
+- the feature that we use is just **wind speed**, **wind angle** , The rest of the data is not very impactful, but adding them will improve performance a bit
 - from this actual wind speed data, the result is quite good with a Mean Absolute Error about **3.2** for a turbine capacity of **100MW**
 
 ## picture of the result
